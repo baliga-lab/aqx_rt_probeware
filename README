@@ -1,0 +1,2 @@
+autoreconf -v --install
+make
