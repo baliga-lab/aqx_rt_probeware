@@ -30,7 +30,7 @@ extern "C" {
 /* Please replace for user */
 #define REFRESH_TOKEN "1/uHlxK48dCAolwIS-FckPhaMcWMKrdO7QVbo9E_Kb_k1IgOrJDtdun6zK6XiATCKT"
 #define SYSTEM_UID "7921a6763e0011e5beb064273763ec8b"
-#define SEND_INTERVAL_SECS 10
+#define SEND_INTERVAL_SECS 60
 
 /* TODO: This is actually a feature of the measuring component */
 #define SECONDS_PER_SAMPLE 1
@@ -233,9 +233,10 @@ void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
   }
 
   if (!status) {
+    /*
     printf("DAQ firmware version is %x.%02x .\n", (gtype_uint16) getStatusResponse.majorVersionMasterCPU, 
            (gtype_uint16) getStatusResponse.minorVersionMasterCPU);
-
+    */
     memset(&getNVMemResponse, 0, sizeof(getNVMemResponse));
     status = NGIO_Device_NVMemBlk_Read(hDevice, NGIO_NVMEM_CHANNEL_ID1, &getNVMemResponse, 0,
                                        sizeof(getNVMemResponse) - 1, NGIO_TIMEOUT_MS_DEFAULT);
@@ -375,7 +376,7 @@ int main(int argc, char* argv[])
 
     OSSleep(1000); /* sync time just in case */
 
-    for (i = 0; i < 3; i ++) {
+    for (i = 0; i < 1000; i ++) {
       if (hTempDevice) GoIO_SendIORequest(hTempDevice);
       if (hLabQuestDevice) NGIO_SendIORequest(hLabQuestDevice, ngio_deviceType);
 

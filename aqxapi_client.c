@@ -23,7 +23,7 @@
 #define AUTH_HEADER_MAXLEN 200
 #define REFRESH_POST_PARAMS_MAXLEN 1024
 #define JSON_BUFFER_SIZE 2048
-#define MAX_MEASUREMENTS 10
+#define MAX_MEASUREMENTS 100
 
 /* Module init configuration */
 static struct aqx_client_options config;
@@ -175,7 +175,7 @@ json_object *to_json(struct aqx_measurement *m)
           tstruct->tm_hour, tstruct->tm_min, tstruct->tm_sec);
 
   json_object_object_add(obj, "time", json_object_new_string(time_buffer));
-  json_object_object_add(obj, "temperature", json_object_new_double(m->temperature));
+  json_object_object_add(obj, "temp", json_object_new_double(m->temperature));
   json_object_object_add(obj, "ph", json_object_new_double(m->ph));
   json_object_object_add(obj, "o2", json_object_new_double(m->o2));
   json_object_object_add(obj, "light", json_object_new_double(m->light));
