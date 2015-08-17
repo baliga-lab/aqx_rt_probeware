@@ -114,24 +114,23 @@ GOIO_SENSOR_HANDLE GoIO_OpenTemperatureDevice()
   return hDevice;
 }
 
-double GoIO_TakeMeasurement(GOIO_SENSOR_HANDLE hDevice, struct aqx_measurement *measurement)
+/* Step 1: Send IO request */
+void GoIO_SendIORequest(GOIO_SENSOR_HANDLE hDevice)
 {
-	char units[20];
-	char equationType = 0;
+  GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
+  GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
+}
+
+/* Step 2: Collect, aggregate and convert measurments */
+double GoIO_CollectMeasurement(GOIO_SENSOR_HANDLE hDevice)
+{
 	gtype_int32 numMeasurements, i;
 	gtype_int32 rawMeasurements[MAX_NUM_MEASUREMENTS];
 	gtype_real64 volts[MAX_NUM_MEASUREMENTS];
 	gtype_real64 calbMeasurements[MAX_NUM_MEASUREMENTS];
 	gtype_real64 averageCalbMeasurement;
 
-  GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
-  GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
-
-  /* Step 2: wait and collect */
-  OSSleep(1000); //Wait 1 second.
-
   numMeasurements = GoIO_Sensor_ReadRawMeasurements(hDevice, rawMeasurements, MAX_NUM_MEASUREMENTS);
-  printf("%d measurements received after about 1 second.\n", numMeasurements);
   averageCalbMeasurement = 0.0;
   for (i = 0; i < numMeasurements; i++) {
     volts[i] = GoIO_Sensor_ConvertToVoltage(hDevice, rawMeasurements[i]);
@@ -140,13 +139,16 @@ double GoIO_TakeMeasurement(GOIO_SENSOR_HANDLE hDevice, struct aqx_measurement *
   }
   if (numMeasurements > 1) averageCalbMeasurement = averageCalbMeasurement / numMeasurements;
 
+  /*
   GoIO_Sensor_DDSMem_GetCalibrationEquation(hDevice, &equationType);
-
   gtype_real32 a, b, c;
   unsigned char activeCalPage = 0;
+	char units[20];
+	char equationType = 0;
   GoIO_Sensor_DDSMem_GetActiveCalPage(hDevice, &activeCalPage);
   GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
   printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
+  */
 
   return averageCalbMeasurement;
 }
@@ -160,11 +162,17 @@ int main(int argc, char* argv[])
 
   init_system();
 
-  GOIO_SENSOR_HANDLE hDevice = GoIO_OpenTemperatureDevice();
-  any_devices_connected = hDevice != NULL;
+  GOIO_SENSOR_HANDLE hTempDevice = GoIO_OpenTemperatureDevice();
+  any_devices_connected = hTempDevice != NULL;
 
-  if (hDevice) {
-    measurement.temperature = GoIO_TakeMeasurement(hDevice, &measurement);
+  if (hTempDevice) {
+    GoIO_SendIORequest(hTempDevice);
+  }
+
+  OSSleep(1000); /* wait for a second */
+
+  if (hTempDevice) {
+    measurement.temperature = GoIO_CollectMeasurement(hTempDevice);
   }
 
   if (any_devices_connected) {
@@ -178,7 +186,7 @@ int main(int argc, char* argv[])
   }
 
   /* cleanup here */
-  if (hDevice) GoIO_Sensor_Close(hDevice);
+  if (hTempDevice) GoIO_Sensor_Close(hTempDevice);
 
 	GoIO_Uninit();
   aqx_client_cleanup();
