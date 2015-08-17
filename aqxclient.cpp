@@ -78,6 +78,7 @@ int init_system()
           goio_major, goio_minor, ngio_major, ngio_minor);
 
   aqx_client_init(&aqx_options);
+  return 1;
 }
 
 void cleanup_system()
@@ -359,7 +360,7 @@ void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice)
 
 int main(int argc, char* argv[])
 {
-  struct MHD_Daemon *daemon;
+  /* struct MHD_Daemon *daemon; */
   struct aqx_measurement measurement;
   int any_devices_connected = 0;
   gtype_uint32 ngio_deviceType = 0;

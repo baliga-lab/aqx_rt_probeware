@@ -50,7 +50,7 @@ static char json_buffer[JSON_BUFFER_SIZE];
  */
 size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
-  uint num_bytes = size * nmemb;
+  size_t num_bytes = size * nmemb;
 
   /* ensure the callback will not stomp over buffer boundaries */
   if (json_count + num_bytes >= JSON_BUFFER_SIZE) return 0;
