@@ -36,10 +36,14 @@ extern "C" {
 #define SECONDS_PER_SAMPLE 1
 
 #include "GoIO_DLL_interface.h"
+#include "NGIO_lib_interface.h"
 
 const char *deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 
-bool GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId);
+NGIO_LIBRARY_HANDLE g_hNGIOlib = NULL;
+NGIO_DEVICE_HANDLE g_hDevice = NULL;
+
+bool GoIO_GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId);
 static void OSSleep(unsigned long msToSleep);
 
 /*
@@ -61,14 +65,28 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
 }
 */
 
+int init_system()
+{
+	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
+  struct aqx_client_options aqx_options = {SYSTEM_UID, REFRESH_TOKEN, SEND_INTERVAL_SECS};
+
+	GoIO_Init();
+	GoIO_GetDLLVersion(&goio_major, &goio_minor);
+	g_hNGIOlib = NGIO_Init();
+	NGIO_GetDLLVersion(g_hNGIOlib, &ngio_major, &ngio_minor);
+
+	fprintf(stderr, "aqx_client V0.001 - (c) 2015 Institute for Systems Biology\nGoIO library version %d.%d\nNGIO library version %d.%d\n",
+          goio_major, goio_minor, ngio_major, ngio_minor);
+
+  aqx_client_init(&aqx_options);
+}
+
 int main(int argc, char* argv[])
 {
 	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
 	gtype_int32 vendorId;		//USB vendor id
 	gtype_int32 productId;		//USB product id
 	char tmpstring[100];
-	gtype_uint16 MajorVersion;
-	gtype_uint16 MinorVersion;
 	char units[20];
 	char equationType = 0;
 
@@ -79,26 +97,19 @@ int main(int argc, char* argv[])
 	gtype_real64 averageCalbMeasurement;
 
   struct MHD_Daemon *daemon;
-  struct aqx_client_options aqx_options = {SYSTEM_UID, REFRESH_TOKEN, SEND_INTERVAL_SECS};
   struct aqx_measurement measurement;
 
-	printf("aqxclient 0.1\n");
-	GoIO_Init();
-	GoIO_GetDLLVersion(&MajorVersion, &MinorVersion);
-	printf("This app is linked to GoIO lib version %d.%d .\n", MajorVersion, MinorVersion);
+  init_system();
 
-  aqx_client_init(&aqx_options);
-
-	bool bFoundDevice = GetAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME, &vendorId, &productId);
-	if (!bFoundDevice)
+	bool bFoundDevice = GoIO_GetAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME, &vendorId, &productId);
+	if (!bFoundDevice) {
 		printf("No Go devices found.\n");
-	else
-	{
+  } else {
 		GOIO_SENSOR_HANDLE hDevice = GoIO_Sensor_Open(deviceName, vendorId, productId, 0);
 		if (hDevice != NULL)
 		{
 			printf("Successfully opened %s device %s .\n", deviceDesc[productId], deviceName);
-
+      /* TODO: Outfactor to method GoIO_TakeMeasuremnt() */
 			unsigned char charId;
 			GoIO_Sensor_DDSMem_GetSensorNumber(hDevice, &charId, 0, 0);
 			printf("Sensor id = %d", charId);
@@ -130,6 +141,7 @@ int main(int argc, char* argv[])
 			GoIO_Sensor_DDSMem_GetActiveCalPage(hDevice, &activeCalPage);
 			GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
 			printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
+      /* TODO: Outfactor to method GoIO_TakeMeasuremnt()  -- snip end -- */
 
       /* set measurement */
       time(&measurement.time);
@@ -153,7 +165,7 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-bool GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId)
+bool GoIO_GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId)
 {
 	bool bFoundDevice = false;
 	deviceName[0] = 0;
