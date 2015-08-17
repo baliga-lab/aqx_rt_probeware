@@ -159,13 +159,14 @@ double GoIO_CollectMeasurement(GOIO_SENSOR_HANDLE hDevice)
   return averageCalbMeasurement;
 }
 
-gtype_uint32 NGIO_OpenLabQuestDevices()
+NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
 {
 	gtype_uint32 sig, mask, deviceType;
 	gtype_uint32 numDevices;
 	NGIO_DEVICE_LIST_HANDLE hDeviceList;
 	gtype_int32 status = 0;
 	char deviceName[NGIO_MAX_SIZE_DEVICE_NAME];
+  NGIO_DEVICE_HANDLE retval = NULL;
 
   deviceType = NGIO_DEVTYPE_LABQUEST;
   NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
@@ -195,19 +196,164 @@ gtype_uint32 NGIO_OpenLabQuestDevices()
   }
 
   if (!status) {
-    NGIO_DEVICE_HANDLE hDevice = NULL;
-    hDevice = NGIO_Device_Open(g_hNGIOlib, deviceName, 0);
-
-    if (hDevice) {
-      /* TODO */
-      fprintf(stderr, "Opened NGIO Device successfully !\n");
-      NGIO_Device_Close(hDevice);
+    retval = NGIO_Device_Open(g_hNGIOlib, deviceName, 0);
+    *retDeviceType = deviceType;
+    if (retval) {
+      fprintf(stderr, "NGIO Device Type: %d opened successfully\n", deviceType);
     } else {
       fprintf(stderr, "Opening NGIO Device failed !\n");
     }
   }
+  return retval;
+}
 
-  return deviceType;
+void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
+{
+	NGIOGetStatusCmdResponsePayload getStatusResponse;
+	NGIO_NVMEM_CHANNEL_ID1_rec getNVMemResponse;
+	gtype_uint32 nRespBytes;
+  gtype_int32 status = 0;
+
+  if ((NGIO_DEVTYPE_LABQUEST == deviceType) || (NGIO_DEVTYPE_LABQUEST2 == deviceType)) {
+#if !(defined(TARGET_PLATFORM_LABQUEST) || defined(TARGET_PLATFORM_LABQUEST2))
+    /* Wrest control of the LabQuest data acquisition subsystem(the DAQ) away from the GUI app running
+       down on the LabQuest. */
+    status = NGIO_Device_AcquireExclusiveOwnership(hDevice, NGIO_GRAB_DAQ_TIMEOUT);
+    if (status) {
+      fprintf(stderr, "NGIO_Device_AcquireExclusiveOwnership() failed!\n");
+    }
+#endif
+  }
+  
+  if (!status) {
+    memset(&getStatusResponse, 0, sizeof(getStatusResponse));
+    nRespBytes = sizeof(getStatusResponse);
+    status = NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_GET_STATUS, NULL, 0, &getStatusResponse,
+                                               &nRespBytes, NGIO_TIMEOUT_MS_DEFAULT);
+  }
+
+  if (!status) {
+    printf("DAQ firmware version is %x.%02x .\n", (gtype_uint16) getStatusResponse.majorVersionMasterCPU, 
+           (gtype_uint16) getStatusResponse.minorVersionMasterCPU);
+
+    memset(&getNVMemResponse, 0, sizeof(getNVMemResponse));
+    status = NGIO_Device_NVMemBlk_Read(hDevice, NGIO_NVMEM_CHANNEL_ID1, &getNVMemResponse, 0,
+                                       sizeof(getNVMemResponse) - 1, NGIO_TIMEOUT_MS_DEFAULT);
+  }
+
+  if (!status) {
+    unsigned int serialNum = getNVMemResponse.serialNumber.msbyteMswordSerialCounter;
+    serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.lsbyteMswordSerialCounter;
+    serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.msbyteLswordSerialCounter;
+    serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.lsbyteLswordSerialCounter;
+    fprintf(stderr, "LabQuest serial number(yy ww nnnnnnnn) is %02x %02x %08d\n", 
+           (gtype_uint16) getNVMemResponse.serialNumber.yy, 
+           (gtype_uint16) getNVMemResponse.serialNumber.ww, serialNum);
+  }
+  if (!status) {
+    NGIOSetSensorChannelEnableMaskParams maskParams;
+    NGIOSetAnalogInputParams analogInputParams;
+    unsigned char channelMask = NGIO_CHANNEL_MASK_ANALOG1;
+    signed char channel;
+    unsigned char sensorId = 0;
+    gtype_uint32 sig;
+
+
+    memset(&maskParams, 0, sizeof(maskParams));
+    for (channel = NGIO_CHANNEL_ID_ANALOG1; channel <= NGIO_CHANNEL_ID_ANALOG4; channel++) {
+      NGIO_Device_DDSMem_GetSensorNumber(hDevice, channel, &sensorId, 1, &sig, NGIO_TIMEOUT_MS_DEFAULT);
+      if (sensorId != 0) {
+        maskParams.lsbyteLsword_EnableSensorChannels = maskParams.lsbyteLsword_EnableSensorChannels | channelMask;
+        if (sensorId >= kSensorIdNumber_FirstSmartSensor)
+          NGIO_Device_DDSMem_ReadRecord(hDevice, channel, 0, NGIO_TIMEOUT_MS_READ_DDSMEMBLOCK);
+
+        if (kProbeTypeAnalog10V == NGIO_Device_GetProbeType(hDevice, channel))
+          analogInputParams.analogInput = NGIO_ANALOG_INPUT_PM10V_BUILTIN_12BIT_ADC;
+        else
+          analogInputParams.analogInput = NGIO_ANALOG_INPUT_5V_BUILTIN_12BIT_ADC;
+        analogInputParams.channel = channel;
+        NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_SET_ANALOG_INPUT, &analogInputParams, 
+                                          sizeof(analogInputParams), NULL, NULL, NGIO_TIMEOUT_MS_DEFAULT);
+      }
+      channelMask = channelMask << 1;
+    }
+
+    if (0 == maskParams.lsbyteLsword_EnableSensorChannels) {
+      printf("No analog sensors found.\n");
+    } else {
+      maskParams.lsbyteLsword_EnableSensorChannels = maskParams.lsbyteLsword_EnableSensorChannels & 14;//spam ignore analog4
+
+      NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_SET_SENSOR_CHANNEL_ENABLE_MASK, &maskParams, 
+                                        sizeof(maskParams), NULL, NULL, NGIO_TIMEOUT_MS_DEFAULT);
+
+      NGIO_Device_SetMeasurementPeriod(hDevice, -1, 0.001, NGIO_TIMEOUT_MS_DEFAULT);// 1000 hz.
+      NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, NGIO_TIMEOUT_MS_DEFAULT);
+    }
+  }
+}
+
+void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement *measurement)
+{
+  signed char channel;
+  unsigned char sensorId = 0;
+  gtype_uint32 sig;
+  gtype_int32 numMeasurements, i;
+  gtype_int32 rawMeasurements[MAX_NUM_MEASUREMENTS];
+  gtype_real32 volts[MAX_NUM_MEASUREMENTS];
+  gtype_real32 calbMeasurements[MAX_NUM_MEASUREMENTS];
+  gtype_real32 averageCalbMeasurement;
+  char units[20];
+
+  for (channel = NGIO_CHANNEL_ID_ANALOG1; channel <= NGIO_CHANNEL_ID_ANALOG4; channel++) {
+    NGIO_Device_DDSMem_GetSensorNumber(hDevice, channel, &sensorId, 0, &sig, 0);
+    if (sensorId != 0) {
+      char longname[30];
+      longname[0] = 0;
+      fprintf(stderr, "Sensor id in channel ANALOG%d = %d", channel, sensorId);
+      NGIO_Device_DDSMem_GetLongName(hDevice, channel, longname, sizeof(longname));
+      if (strlen(longname) != 0) fprintf(stderr, " Sensor Name = '%s' ", longname);
+
+      int probeType = NGIO_Device_GetProbeType(hDevice, channel);
+      numMeasurements = NGIO_Device_ReadRawMeasurements(hDevice, channel, rawMeasurements, NULL, MAX_NUM_MEASUREMENTS);
+      if (numMeasurements > 0) {
+        averageCalbMeasurement = 0.0;
+        for (i = 0; i < numMeasurements; i++) {
+          volts[i] = NGIO_Device_ConvertToVoltage(hDevice, channel, rawMeasurements[i], probeType);
+          calbMeasurements[i] = NGIO_Device_CalibrateData(hDevice, channel, volts[i]);
+          averageCalbMeasurement += calbMeasurements[i];
+        }
+        if (numMeasurements > 1) {
+          averageCalbMeasurement = averageCalbMeasurement/numMeasurements;
+        }
+        if (!strncmp("NH4 ISE", longname, 7)) {
+          measurement->ammonium = averageCalbMeasurement;
+        }
+
+        gtype_real32 a, b, c;
+        unsigned char activeCalPage = 0;
+        NGIO_Device_DDSMem_GetActiveCalPage(hDevice, channel, &activeCalPage);
+        NGIO_Device_DDSMem_GetCalPage(hDevice, channel, activeCalPage, &a, &b, &c, units, sizeof(units));            
+        fprintf(stderr, "; average of %d measurements = %8.3f %s .", numMeasurements, averageCalbMeasurement, units);
+      }
+      fprintf(stderr, "\n");
+    }
+  }
+}
+
+void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice)
+{
+	NGIOGetStatusCmdResponsePayload getStatusResponse;
+	gtype_uint32 nRespBytes;
+  gtype_int32 status = 0;
+
+  NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_STOP_MEASUREMENTS, NULL, 0, NULL, NULL, NGIO_TIMEOUT_MS_DEFAULT);
+  memset(&getStatusResponse, 0, sizeof(getStatusResponse));
+  nRespBytes = sizeof(getStatusResponse);
+  status = NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_GET_STATUS, NULL, 0, &getStatusResponse,
+                                             &nRespBytes, NGIO_TIMEOUT_MS_DEFAULT);
+  if (0 == status) {
+    printf("DAQ reports status byte of %xh\n", getStatusResponse.status);
+  }
 }
 
 int main(int argc, char* argv[])
@@ -216,37 +362,49 @@ int main(int argc, char* argv[])
   struct aqx_measurement measurement;
   int any_devices_connected = 0;
   gtype_uint32 ngio_deviceType = 0;
+  int i;
 
   init_system();
 
   GOIO_SENSOR_HANDLE hTempDevice = GoIO_OpenTemperatureDevice();
-  ngio_deviceType = NGIO_OpenLabQuestDevices();
-  fprintf(stderr, "NGIO Device Type: %d\n", ngio_deviceType);
+  NGIO_DEVICE_HANDLE hLabQuestDevice = NGIO_OpenLabQuestDevices(&ngio_deviceType);
 
-  any_devices_connected = hTempDevice != NULL;
-
-  if (hTempDevice) {
-    GoIO_SendIORequest(hTempDevice);
-  }
-
-  OSSleep(1000); /* wait for a second */
-
-  if (hTempDevice) {
-    measurement.temperature = GoIO_CollectMeasurement(hTempDevice);
-  }
+  any_devices_connected = hTempDevice != NULL || hLabQuestDevice != NULL;
 
   if (any_devices_connected) {
+
+    OSSleep(1000); /* sync time just in case */
+
+    for (i = 0; i < 3; i ++) {
+      if (hTempDevice) GoIO_SendIORequest(hTempDevice);
+      if (hLabQuestDevice) NGIO_SendIORequest(hLabQuestDevice, ngio_deviceType);
+
+      OSSleep(1000); /* wait for a second */
+
+      if (hTempDevice) {
+        measurement.temperature = GoIO_CollectMeasurement(hTempDevice);
+      }
+
+      if (hLabQuestDevice) {
+        NGIO_CollectMeasurements(hLabQuestDevice, &measurement);
+        NGIO_StopMeasurements(hLabQuestDevice);
+      }
+      /* Register time after all measurements were taken */
+      time(&measurement.time);
+      aqx_add_measurement(&measurement);
+    }
+
+    /* Make sure we did not lose any measurements */
     fprintf(stderr, "Submitting measurements...\n");
-    /* Register time after all measurements were taken */
-    time(&measurement.time);
-    aqx_add_measurement(&measurement);
     aqx_client_flush();
-	} else {
+
+  } else {
     fprintf(stderr, "no devices connected (%d), don't submit\n", any_devices_connected);
   }
 
   /* cleanup here */
   if (hTempDevice) GoIO_Sensor_Close(hTempDevice);
+  if (hLabQuestDevice) NGIO_Device_Close(hTempDevice);
 
   cleanup_system();
   /*
