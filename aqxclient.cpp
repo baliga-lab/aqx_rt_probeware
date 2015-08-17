@@ -41,7 +41,6 @@ extern "C" {
 const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 
 NGIO_LIBRARY_HANDLE g_hNGIOlib = NULL;
-NGIO_DEVICE_HANDLE g_hDevice = NULL;
 
 bool GoIO_GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId);
 static void OSSleep(unsigned long msToSleep);
@@ -79,6 +78,13 @@ int init_system()
           goio_major, goio_minor, ngio_major, ngio_minor);
 
   aqx_client_init(&aqx_options);
+}
+
+void cleanup_system()
+{
+  NGIO_Uninit(g_hNGIOlib);
+	GoIO_Uninit();
+  aqx_client_cleanup();
 }
 
 GOIO_SENSOR_HANDLE GoIO_OpenTemperatureDevice()
@@ -153,16 +159,70 @@ double GoIO_CollectMeasurement(GOIO_SENSOR_HANDLE hDevice)
   return averageCalbMeasurement;
 }
 
+gtype_uint32 NGIO_OpenLabQuestDevices()
+{
+	gtype_uint32 sig, mask, deviceType;
+	gtype_uint32 numDevices;
+	NGIO_DEVICE_LIST_HANDLE hDeviceList;
+	gtype_int32 status = 0;
+	char deviceName[NGIO_MAX_SIZE_DEVICE_NAME];
+
+  deviceType = NGIO_DEVTYPE_LABQUEST;
+  NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
+  hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
+  status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
+  NGIO_CloseDeviceListSnapshot(hDeviceList);
+
+  fprintf(stderr, "NGIO LabQuest Status: %d\n", status);
+
+  if (status) {
+    deviceType = NGIO_DEVTYPE_LABQUEST_MINI;
+    NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);
+
+    hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
+    status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
+    NGIO_CloseDeviceListSnapshot(hDeviceList);
+    fprintf(stderr, "NGIO LabQuest Mini Status: %d\n", status);
+  }
+  if (status) {
+    deviceType = NGIO_DEVTYPE_LABQUEST2;
+    NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);
+
+    hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
+    status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
+    NGIO_CloseDeviceListSnapshot(hDeviceList);
+    fprintf(stderr, "NGIO LabQuest2 Status: %d\n", status);
+  }
+
+  if (!status) {
+    NGIO_DEVICE_HANDLE hDevice = NULL;
+    hDevice = NGIO_Device_Open(g_hNGIOlib, deviceName, 0);
+
+    if (hDevice) {
+      /* TODO */
+      fprintf(stderr, "Opened NGIO Device successfully !\n");
+      NGIO_Device_Close(hDevice);
+    } else {
+      fprintf(stderr, "Opening NGIO Device failed !\n");
+    }
+  }
+
+  return deviceType;
+}
 
 int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
   int any_devices_connected = 0;
+  gtype_uint32 ngio_deviceType = 0;
 
   init_system();
 
   GOIO_SENSOR_HANDLE hTempDevice = GoIO_OpenTemperatureDevice();
+  ngio_deviceType = NGIO_OpenLabQuestDevices();
+  fprintf(stderr, "NGIO Device Type: %d\n", ngio_deviceType);
+
   any_devices_connected = hTempDevice != NULL;
 
   if (hTempDevice) {
@@ -188,8 +248,7 @@ int main(int argc, char* argv[])
   /* cleanup here */
   if (hTempDevice) GoIO_Sensor_Close(hTempDevice);
 
-	GoIO_Uninit();
-  aqx_client_cleanup();
+  cleanup_system();
   /*
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
