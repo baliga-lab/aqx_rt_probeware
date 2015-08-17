@@ -17,10 +17,23 @@
 #include <Carbon/Carbon.h>
 #endif
 
+extern "C" {
+#include "aqxapi_client.h"
+}
+/*
 #include <microhttpd.h>
 #define HTTP_PORT 8080
+*/
 
 #define MAX_NUM_MEASUREMENTS 100
+
+/* Please replace for user */
+#define REFRESH_TOKEN "1/uHlxK48dCAolwIS-FckPhaMcWMKrdO7QVbo9E_Kb_k1IgOrJDtdun6zK6XiATCKT"
+#define SYSTEM_UID "7921a6763e0011e5beb064273763ec8b"
+#define SEND_INTERVAL_SECS 10
+
+/* TODO: This is actually a feature of the measuring component */
+#define SECONDS_PER_SAMPLE 1
 
 #include "GoIO_DLL_interface.h"
 
@@ -29,6 +42,7 @@ const char *deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?"
 bool GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId);
 static void OSSleep(unsigned long msToSleep);
 
+/*
 int answer_to_connection (void *cls, struct MHD_Connection *connection,
                           const char *url,
                           const char *method, const char *version,
@@ -45,6 +59,7 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
   MHD_destroy_response (response);
   return ret;
 }
+*/
 
 int main(int argc, char* argv[])
 {
@@ -64,11 +79,15 @@ int main(int argc, char* argv[])
 	gtype_real64 averageCalbMeasurement;
 
   struct MHD_Daemon *daemon;
+  struct aqx_client_options aqx_options = {SYSTEM_UID, REFRESH_TOKEN, SEND_INTERVAL_SECS};
+  struct aqx_measurement measurement;
 
 	printf("aqxclient 0.1\n");
 	GoIO_Init();
 	GoIO_GetDLLVersion(&MajorVersion, &MinorVersion);
 	printf("This app is linked to GoIO lib version %d.%d .\n", MajorVersion, MinorVersion);
+
+  aqx_client_init(&aqx_options);
 
 	bool bFoundDevice = GetAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME, &vendorId, &productId);
 	if (!bFoundDevice)
@@ -112,17 +131,25 @@ int main(int argc, char* argv[])
 			GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
 			printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
 
+      /* set measurement */
+      time(&measurement.time);
+      measurement.temperature = averageCalbMeasurement;
+      aqx_add_measurement(&measurement);
+      aqx_client_flush();
+
 			GoIO_Sensor_Close(hDevice);
 		}
 	}
 	GoIO_Uninit();
-
+  aqx_client_cleanup();
+  /*
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
   if (daemon) {
     getchar();
     MHD_stop_daemon(daemon);
-  }
+    }
+  */
 	return 0;
 }
 

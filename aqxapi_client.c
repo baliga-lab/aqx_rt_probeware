@@ -219,15 +219,8 @@ void aqx_client_cleanup()
   curl_global_cleanup();
 }
 
-int aqx_add_measurement(struct aqx_measurement *m)
+void aqx_client_flush()
 {
-  time_t currtime;
-  time_t elapsed;
-
-  time(&currtime);
-  elapsed = currtime - last_submission_time;
-  memcpy(&measurement_data[num_measurements++], m, sizeof(struct aqx_measurement));
-  if (elapsed >= config.send_interval_secs || num_measurements >= MAX_MEASUREMENTS) {
     struct json_object *arr;
     const char *json_str, *access_token;
     arr = serialize_measurements();
@@ -245,6 +238,18 @@ int aqx_add_measurement(struct aqx_measurement *m)
     /* reset counter and timer */
     num_measurements = 0;
     time(&last_submission_time);
+}
+
+int aqx_add_measurement(struct aqx_measurement *m)
+{
+  time_t currtime;
+  time_t elapsed;
+
+  time(&currtime);
+  elapsed = currtime - last_submission_time;
+  memcpy(&measurement_data[num_measurements++], m, sizeof(struct aqx_measurement));
+  if (elapsed >= config.send_interval_secs || num_measurements >= MAX_MEASUREMENTS) {
+    aqx_client_flush();
   }
   return 1;
 }

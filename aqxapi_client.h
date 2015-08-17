@@ -21,6 +21,8 @@ struct aqx_client_options {
 
 extern int aqx_client_init(struct aqx_client_options *options);
 extern int aqx_add_measurement(struct aqx_measurement *m);
+/* force send everything available */
+extern void aqx_client_flush();
 extern void aqx_client_cleanup();
 
 #endif /* __AQXAPI_CLIENT_H__ */
