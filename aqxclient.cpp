@@ -81,15 +81,41 @@ int init_system()
   aqx_client_init(&aqx_options);
 }
 
-/*
 GOIO_SENSOR_HANDLE GoIO_OpenTemperatureDevice()
 {
+	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
+  /* USB vendor ids */
+	gtype_int32 vendorId, productId;
+  GOIO_SENSOR_HANDLE hDevice = NULL;
+
+	bool bFoundDevice = GoIO_GetAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME, &vendorId, &productId);
+  if (bFoundDevice) {
+    hDevice = GoIO_Sensor_Open(deviceName, vendorId, productId, 0);
+    char tmpstring[100];
+
+    if (hDevice != NULL) {
+      unsigned char charId;
+
+      /* Phase 1 send io request */
+      GoIO_Sensor_DDSMem_GetSensorNumber(hDevice, &charId, 0, 0);
+      GoIO_Sensor_DDSMem_GetLongName(hDevice, tmpstring, sizeof(tmpstring));
+
+      printf("Successfully opened '%s' device '%s'.\n", goio_deviceDesc[productId], deviceName);
+      if (tmpstring && !strncmp("Temperature", tmpstring, sizeof(tmpstring))) {
+        fprintf(stderr, "Sensor id = %d (%s)\n", charId, tmpstring);      
+      } else {
+        /* We did not find the right sensor, so close it and ignore */
+        fprintf(stderr, "Did not find the right sensor: '%s'\n", tmpstring);
+        GoIO_Sensor_Close(hDevice);
+        hDevice = NULL;
+      }
+    }
+  }
+  return hDevice;
 }
-*/
-void GoIO_TakeMeasurement(const char *deviceName, gtype_int32 vendorId, gtype_int32 productId,
-                          struct aqx_measurement *measurement)
+
+double GoIO_TakeMeasurement(GOIO_SENSOR_HANDLE hDevice, struct aqx_measurement *measurement)
 {
-	char tmpstring[100];
 	char units[20];
 	char equationType = 0;
 	gtype_int32 numMeasurements, i;
@@ -98,48 +124,31 @@ void GoIO_TakeMeasurement(const char *deviceName, gtype_int32 vendorId, gtype_in
 	gtype_real64 calbMeasurements[MAX_NUM_MEASUREMENTS];
 	gtype_real64 averageCalbMeasurement;
 
-  GOIO_SENSOR_HANDLE hDevice = GoIO_Sensor_Open(deviceName, vendorId, productId, 0);
-  if (hDevice != NULL) {
-    unsigned char charId;
+  GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
+  GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
 
-    /* Phase 1 send io request */
-    GoIO_Sensor_DDSMem_GetSensorNumber(hDevice, &charId, 0, 0);
-    GoIO_Sensor_DDSMem_GetLongName(hDevice, tmpstring, sizeof(tmpstring));
+  /* Step 2: wait and collect */
+  OSSleep(1000); //Wait 1 second.
 
-    printf("Successfully opened '%s' device '%s'.\n", goio_deviceDesc[productId], deviceName);
-    if (tmpstring) {
-      fprintf(stderr, "Sensor id = %d (%s)\n", charId, tmpstring);
-    }
-
-    GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
-    GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
-
-    /* Step 2: wait and collect */
-    OSSleep(1000); //Wait 1 second.
-
-    numMeasurements = GoIO_Sensor_ReadRawMeasurements(hDevice, rawMeasurements, MAX_NUM_MEASUREMENTS);
-    printf("%d measurements received after about 1 second.\n", numMeasurements);
-    averageCalbMeasurement = 0.0;
-    for (i = 0; i < numMeasurements; i++) {
-      volts[i] = GoIO_Sensor_ConvertToVoltage(hDevice, rawMeasurements[i]);
-      calbMeasurements[i] = GoIO_Sensor_CalibrateData(hDevice, volts[i]);
-      averageCalbMeasurement += calbMeasurements[i];
-    }
-    if (numMeasurements > 1) averageCalbMeasurement = averageCalbMeasurement / numMeasurements;
-
-    GoIO_Sensor_DDSMem_GetCalibrationEquation(hDevice, &equationType);
-
-    gtype_real32 a, b, c;
-    unsigned char activeCalPage = 0;
-    GoIO_Sensor_DDSMem_GetActiveCalPage(hDevice, &activeCalPage);
-    GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
-    printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
-
-    /* set measurement */
-    measurement->temperature = averageCalbMeasurement;
-
-    GoIO_Sensor_Close(hDevice);
+  numMeasurements = GoIO_Sensor_ReadRawMeasurements(hDevice, rawMeasurements, MAX_NUM_MEASUREMENTS);
+  printf("%d measurements received after about 1 second.\n", numMeasurements);
+  averageCalbMeasurement = 0.0;
+  for (i = 0; i < numMeasurements; i++) {
+    volts[i] = GoIO_Sensor_ConvertToVoltage(hDevice, rawMeasurements[i]);
+    calbMeasurements[i] = GoIO_Sensor_CalibrateData(hDevice, volts[i]);
+    averageCalbMeasurement += calbMeasurements[i];
   }
+  if (numMeasurements > 1) averageCalbMeasurement = averageCalbMeasurement / numMeasurements;
+
+  GoIO_Sensor_DDSMem_GetCalibrationEquation(hDevice, &equationType);
+
+  gtype_real32 a, b, c;
+  unsigned char activeCalPage = 0;
+  GoIO_Sensor_DDSMem_GetActiveCalPage(hDevice, &activeCalPage);
+  GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
+  printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
+
+  return averageCalbMeasurement;
 }
 
 
@@ -147,23 +156,30 @@ int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
-
-	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
-	gtype_int32 vendorId;		//USB vendor id
-	gtype_int32 productId;		//USB product id
+  int any_devices_connected = 0;
 
   init_system();
 
-	bool bFoundDevice = GoIO_GetAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME, &vendorId, &productId);
-	if (!bFoundDevice) {
-		printf("No Go devices found.\n");
-  } else {
-    /* take time first */
+  GOIO_SENSOR_HANDLE hDevice = GoIO_OpenTemperatureDevice();
+  any_devices_connected = hDevice != NULL;
+
+  if (hDevice) {
+    measurement.temperature = GoIO_TakeMeasurement(hDevice, &measurement);
+  }
+
+  if (any_devices_connected) {
+    fprintf(stderr, "Submitting measurements...\n");
+    /* Register time after all measurements were taken */
     time(&measurement.time);
-    GoIO_TakeMeasurement(deviceName, vendorId, productId, &measurement);
     aqx_add_measurement(&measurement);
     aqx_client_flush();
-	}
+	} else {
+    fprintf(stderr, "no devices connected (%d), don't submit\n", any_devices_connected);
+  }
+
+  /* cleanup here */
+  if (hDevice) GoIO_Sensor_Close(hDevice);
+
 	GoIO_Uninit();
   aqx_client_cleanup();
   /*
