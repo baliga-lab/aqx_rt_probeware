@@ -38,7 +38,7 @@ extern "C" {
 #include "GoIO_DLL_interface.h"
 #include "NGIO_lib_interface.h"
 
-const char *deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
+const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 
 NGIO_LIBRARY_HANDLE g_hNGIOlib = NULL;
 NGIO_DEVICE_HANDLE g_hDevice = NULL;
@@ -81,23 +81,76 @@ int init_system()
   aqx_client_init(&aqx_options);
 }
 
-int main(int argc, char* argv[])
+/*
+GOIO_SENSOR_HANDLE GoIO_OpenTemperatureDevice()
 {
-	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
-	gtype_int32 vendorId;		//USB vendor id
-	gtype_int32 productId;		//USB product id
+}
+*/
+void GoIO_TakeMeasurement(const char *deviceName, gtype_int32 vendorId, gtype_int32 productId,
+                          struct aqx_measurement *measurement)
+{
 	char tmpstring[100];
 	char units[20];
 	char equationType = 0;
-
+	gtype_int32 numMeasurements, i;
 	gtype_int32 rawMeasurements[MAX_NUM_MEASUREMENTS];
 	gtype_real64 volts[MAX_NUM_MEASUREMENTS];
 	gtype_real64 calbMeasurements[MAX_NUM_MEASUREMENTS];
-	gtype_int32 numMeasurements, i;
 	gtype_real64 averageCalbMeasurement;
 
+  GOIO_SENSOR_HANDLE hDevice = GoIO_Sensor_Open(deviceName, vendorId, productId, 0);
+  if (hDevice != NULL) {
+    unsigned char charId;
+
+    /* Phase 1 send io request */
+    GoIO_Sensor_DDSMem_GetSensorNumber(hDevice, &charId, 0, 0);
+    GoIO_Sensor_DDSMem_GetLongName(hDevice, tmpstring, sizeof(tmpstring));
+
+    printf("Successfully opened '%s' device '%s'.\n", goio_deviceDesc[productId], deviceName);
+    if (tmpstring) {
+      fprintf(stderr, "Sensor id = %d (%s)\n", charId, tmpstring);
+    }
+
+    GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
+    GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
+
+    /* Step 2: wait and collect */
+    OSSleep(1000); //Wait 1 second.
+
+    numMeasurements = GoIO_Sensor_ReadRawMeasurements(hDevice, rawMeasurements, MAX_NUM_MEASUREMENTS);
+    printf("%d measurements received after about 1 second.\n", numMeasurements);
+    averageCalbMeasurement = 0.0;
+    for (i = 0; i < numMeasurements; i++) {
+      volts[i] = GoIO_Sensor_ConvertToVoltage(hDevice, rawMeasurements[i]);
+      calbMeasurements[i] = GoIO_Sensor_CalibrateData(hDevice, volts[i]);
+      averageCalbMeasurement += calbMeasurements[i];
+    }
+    if (numMeasurements > 1) averageCalbMeasurement = averageCalbMeasurement / numMeasurements;
+
+    GoIO_Sensor_DDSMem_GetCalibrationEquation(hDevice, &equationType);
+
+    gtype_real32 a, b, c;
+    unsigned char activeCalPage = 0;
+    GoIO_Sensor_DDSMem_GetActiveCalPage(hDevice, &activeCalPage);
+    GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
+    printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
+
+    /* set measurement */
+    measurement->temperature = averageCalbMeasurement;
+
+    GoIO_Sensor_Close(hDevice);
+  }
+}
+
+
+int main(int argc, char* argv[])
+{
   struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
+
+	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
+	gtype_int32 vendorId;		//USB vendor id
+	gtype_int32 productId;		//USB product id
 
   init_system();
 
@@ -105,52 +158,11 @@ int main(int argc, char* argv[])
 	if (!bFoundDevice) {
 		printf("No Go devices found.\n");
   } else {
-		GOIO_SENSOR_HANDLE hDevice = GoIO_Sensor_Open(deviceName, vendorId, productId, 0);
-		if (hDevice != NULL)
-		{
-			printf("Successfully opened %s device %s .\n", deviceDesc[productId], deviceName);
-      /* TODO: Outfactor to method GoIO_TakeMeasuremnt() */
-			unsigned char charId;
-			GoIO_Sensor_DDSMem_GetSensorNumber(hDevice, &charId, 0, 0);
-			printf("Sensor id = %d", charId);
-
-			GoIO_Sensor_DDSMem_GetLongName(hDevice, tmpstring, sizeof(tmpstring));
-			if (strlen(tmpstring) != 0)
-				printf("(%s)", tmpstring);
-			printf("\n");
-
-			GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
-			GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
-			OSSleep(1000); //Wait 1 second.
-
-			numMeasurements = GoIO_Sensor_ReadRawMeasurements(hDevice, rawMeasurements, MAX_NUM_MEASUREMENTS);
-			printf("%d measurements received after about 1 second.\n", numMeasurements);
-			averageCalbMeasurement = 0.0;
-			for (i = 0; i < numMeasurements; i++)
-			{
-				volts[i] = GoIO_Sensor_ConvertToVoltage(hDevice, rawMeasurements[i]);
-				calbMeasurements[i] = GoIO_Sensor_CalibrateData(hDevice, volts[i]);
-				averageCalbMeasurement += calbMeasurements[i];
-			}
-			if (numMeasurements > 1)
-				averageCalbMeasurement = averageCalbMeasurement/numMeasurements;
-
-			GoIO_Sensor_DDSMem_GetCalibrationEquation(hDevice, &equationType);
-			gtype_real32 a, b, c;
-			unsigned char activeCalPage = 0;
-			GoIO_Sensor_DDSMem_GetActiveCalPage(hDevice, &activeCalPage);
-			GoIO_Sensor_DDSMem_GetCalPage(hDevice, activeCalPage, &a, &b, &c, units, sizeof(units));
-			printf("Average measurement = %8.3f %s .\n", averageCalbMeasurement, units);
-      /* TODO: Outfactor to method GoIO_TakeMeasuremnt()  -- snip end -- */
-
-      /* set measurement */
-      time(&measurement.time);
-      measurement.temperature = averageCalbMeasurement;
-      aqx_add_measurement(&measurement);
-      aqx_client_flush();
-
-			GoIO_Sensor_Close(hDevice);
-		}
+    /* take time first */
+    time(&measurement.time);
+    GoIO_TakeMeasurement(deviceName, vendorId, productId, &measurement);
+    aqx_add_measurement(&measurement);
+    aqx_client_flush();
 	}
 	GoIO_Uninit();
   aqx_client_cleanup();
