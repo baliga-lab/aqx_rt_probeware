@@ -90,7 +90,7 @@ void GoIO_CloseAllConnectedDevices();
 void GoIO_SendIORequests();
 void GoIO_CollectMeasurements(struct aqx_measurement *measurement);
 
-NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType);
+void NGIO_OpenAllConnectedDevices();
 void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType);
 void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement *measurement);
 void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice);
@@ -146,33 +146,34 @@ int main(int argc, char* argv[])
   /* struct MHD_Daemon *daemon; */
   struct aqx_measurement measurement;
   int any_devices_connected = 0;
-  gtype_uint32 ngio_deviceType = 0;
-  int i;
+  int i, j;
 
   init_system();
 
   // Open all connected GOIO devices
   GoIO_OpenAllConnectedDevices();
-  //NGIO_OpenAllConnectedDevices();
+  NGIO_OpenAllConnectedDevices();
 
-  NGIO_DEVICE_HANDLE hLabQuestDevice = NGIO_OpenLabQuestDevices(&ngio_deviceType);
+  //NGIO_DEVICE_HANDLE hLabQuestDevice = NGIO_OpenLabQuestDevices(&ngio_deviceType);
+  //NGIO_DEVICE_HANDLE hLabQuestDevice = ngio_devices[0].hDevice; // HACK
 
-  any_devices_connected = num_goio_devices > 0 || hLabQuestDevice != NULL;
+  any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
 
   if (any_devices_connected) {
-
     OSSleep(1000); // sync time just in case
 
     for (i = 0; i < 1000; i ++) {
       GoIO_SendIORequests();
-      if (hLabQuestDevice) NGIO_SendIORequest(hLabQuestDevice, ngio_deviceType);
+      for (j = 0; j < num_ngio_devices; j++) {
+        NGIO_SendIORequest(ngio_devices[j].hDevice, ngio_devices[j].deviceType);
+      }
 
       OSSleep(1000); // wait for a second
       GoIO_CollectMeasurements(&measurement);
 
-      if (hLabQuestDevice) {
-        NGIO_CollectMeasurements(hLabQuestDevice, &measurement);
-        NGIO_StopMeasurements(hLabQuestDevice);
+      for (j = 0; j < num_ngio_devices; j++) {
+        NGIO_CollectMeasurements(ngio_devices[j].hDevice, &measurement);
+        NGIO_StopMeasurements(ngio_devices[j].hDevice);
       }
 #ifndef DONT_SUBMIT_TO_API
       // Register time after all measurements were taken
@@ -192,7 +193,9 @@ int main(int argc, char* argv[])
 
   /* cleanup here */
   GoIO_CloseAllConnectedDevices();
-  if (hLabQuestDevice) NGIO_Device_Close(hLabQuestDevice);
+  for (j = 0; j < num_ngio_devices; j++) {
+    NGIO_Device_Close(ngio_devices[j].hDevice);
+  }
 
   cleanup_system();
   /*
@@ -378,62 +381,6 @@ void NGIO_OpenAllConnectedDevices()
   fprintf(stderr, "searching for LabQuest 2 devices\n");
   NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST2);
   fprintf(stderr, "# NGIO devices: %d\n", num_ngio_devices);
-}
-
-NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
-{
-	gtype_uint32 sig, mask, deviceType;
-	gtype_uint32 numDevices;
-	NGIO_DEVICE_LIST_HANDLE hDeviceList;
-	gtype_int32 status = 0;
-	char deviceName[NGIO_MAX_SIZE_DEVICE_NAME];
-  NGIO_DEVICE_HANDLE retval = NULL;
-
-  deviceType = NGIO_DEVTYPE_LABQUEST;
-  NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
-  hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
-  status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
-  NGIO_CloseDeviceListSnapshot(hDeviceList);
-
-  if (!status) {
-    fprintf(stderr, "NGIO LabQuest detected\n");
-  }
-
-  if (status) {
-    deviceType = NGIO_DEVTYPE_LABQUEST_MINI;
-    NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);
-
-    hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
-    status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
-    NGIO_CloseDeviceListSnapshot(hDeviceList);
-    if (!status) {
-      fprintf(stderr, "NGIO LabQuest Mini detected\n");
-    }
-  }
-  if (status) {
-    deviceType = NGIO_DEVTYPE_LABQUEST2;
-    NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);
-
-    hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
-    status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
-    NGIO_CloseDeviceListSnapshot(hDeviceList);
-    if (!status) {
-      fprintf(stderr, "NGIO LabQuest2 detected\n");
-    }
-  }
-
-  if (!status) {
-    retval = NGIO_Device_Open(g_hNGIOlib, deviceName, 0);
-    *retDeviceType = deviceType;
-    if (retval) {
-      fprintf(stderr, "NGIO Device Type: %d opened successfully\n", deviceType);
-    } else {
-      fprintf(stderr, "Opening NGIO Device failed !\n");
-    }
-  } else {
-    fprintf(stderr, "no LabQuest connected devices detected.\n");
-  }
-  return retval;
 }
 
 void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
