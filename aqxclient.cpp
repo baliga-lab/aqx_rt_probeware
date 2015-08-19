@@ -67,12 +67,12 @@ struct goio_device {
 int num_goio_devices;
 struct goio_device goio_devices[MAX_CONNECTED_GOIO_DEVICES];
 
-#define IS_GOIO_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
+#define IS_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
 
-#define IS_NGIO_PH(devname)  (devname && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
-#define IS_NGIO_NH4(devname) (devname && !strncmp(SENSOR_NAME_NH4, devname, sizeof(devname)))
-#define IS_NGIO_NO3(devname) (devname && !strncmp(SENSOR_NAME_NO3, devname, sizeof(devname)))
-#define IS_NGIO_DO(devname)  (devname && (!strncmp(SENSOR_NAME_DO1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_DO2, devname, sizeof(devname)) ))
+#define IS_PH(devname)  (devname && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
+#define IS_NH4(devname) (devname && !strncmp(SENSOR_NAME_NH4, devname, sizeof(devname)))
+#define IS_NO3(devname) (devname && !strncmp(SENSOR_NAME_NO3, devname, sizeof(devname)))
+#define IS_DO(devname)  (devname && (!strncmp(SENSOR_NAME_DO1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_DO2, devname, sizeof(devname)) ))
 
 const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 
@@ -316,6 +316,12 @@ void GoIO_CollectMeasurements(struct aqx_measurement *measurement)
   for (i = 0; i < num_goio_devices; i++) {
     double value = GoIO_CollectMeasurement(goio_devices[i].hDevice);
     fprintf(stderr, "sensor '%s' = %f\n", goio_devices[i].description, value);
+    if (IS_PH(goio_devices[i].description)) measurement->ph = value;
+    else if (IS_NH4(goio_devices[i].description)) measurement->ammonium = value;
+    else if (IS_NO3(goio_devices[i].description)) measurement->nitrate = value;
+    else if (IS_DO(goio_devices[i].description)) measurement->o2 = value;
+    else if (IS_TEMPERATURE(goio_devices[i].description)) measurement->temperature = value;
+    else fprintf(stderr, "sensor '%s' not yet supported for GoIO\n", goio_devices[i].description);
   }
 }
 
@@ -501,15 +507,11 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
           averageCalbMeasurement = averageCalbMeasurement/numMeasurements;
         }
         
-        if (IS_NGIO_PH(longname)) {
-          measurement->ph = averageCalbMeasurement;
-        } else if (IS_NGIO_NH4(longname)) {
-          measurement->ammonium = averageCalbMeasurement;
-        } else if (IS_NGIO_NO3(longname)) {
-          measurement->nitrate = averageCalbMeasurement;
-        } else if (IS_NGIO_DO(longname)) {
-          measurement->o2 = averageCalbMeasurement;
-        } else {
+        if (IS_PH(longname)) measurement->ph = averageCalbMeasurement;
+        else if (IS_NH4(longname)) measurement->ammonium = averageCalbMeasurement;
+        else if (IS_NO3(longname)) measurement->nitrate = averageCalbMeasurement;
+        else if (IS_DO(longname)) measurement->o2 = averageCalbMeasurement;
+        else {
           fprintf(stderr, "Unsupported Sensor detected in ANALOG%d = %d ('%s')\n", channel, sensorId, longname);
           is_supported_sensor = 0;
         }
