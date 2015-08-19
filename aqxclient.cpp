@@ -55,17 +55,24 @@ extern "C" {
 #define SENSOR_NAME_DO1  "D. Oxygen"
 #define SENSOR_NAME_DO2  "D. OXYGEN"
 
-#define MAX_CONNECTED_GOIO_DEVICES 3
+#define MAX_CONNECTED_GOIO_DEVICES 8
+#define MAX_CONNECTED_NGIO_DEVICES 4
 
 struct goio_device {
   GOIO_SENSOR_HANDLE hDevice;
-	gtype_int32 vendorId, productId;
-	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
   char description[100];
+};
+
+struct ngio_device {
+  NGIO_DEVICE_HANDLE hDevice;
+  gtype_int32 deviceType;
 };
 
 int num_goio_devices;
 struct goio_device goio_devices[MAX_CONNECTED_GOIO_DEVICES];
+
+int num_ngio_devices = 0;
+struct ngio_device ngio_devices[MAX_CONNECTED_NGIO_DEVICES];
 
 #define IS_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
 
@@ -146,6 +153,7 @@ int main(int argc, char* argv[])
 
   // Open all connected GOIO devices
   GoIO_OpenAllConnectedDevices();
+  //NGIO_OpenAllConnectedDevices();
 
   NGIO_DEVICE_HANDLE hLabQuestDevice = NGIO_OpenLabQuestDevices(&ngio_deviceType);
 
@@ -223,15 +231,17 @@ void OSSleep(
 void GoIO_GetConnectedDevices(gtype_int32 productId)
 {
   int numDevices;
+	gtype_int32 vendorId;
   gtype_int32 i;
   struct goio_device *device = &goio_devices[num_goio_devices];
+	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
+
   numDevices = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, productId);
   for (i = 0; i < numDevices; i++) {
-		GoIO_GetNthAvailableDeviceName(device->deviceName, GOIO_MAX_SIZE_DEVICE_NAME,
+		GoIO_GetNthAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME,
                                    VERNIER_DEFAULT_VENDOR_ID, productId, i);
-		device->vendorId = VERNIER_DEFAULT_VENDOR_ID;
-		device->productId = productId;
-    device->hDevice = GoIO_Sensor_Open(device->deviceName, VERNIER_DEFAULT_VENDOR_ID,
+		vendorId = VERNIER_DEFAULT_VENDOR_ID;
+    device->hDevice = GoIO_Sensor_Open(deviceName, VERNIER_DEFAULT_VENDOR_ID,
                                        productId, 0);
     if (device->hDevice) {
       unsigned char charId;
@@ -242,7 +252,7 @@ void GoIO_GetConnectedDevices(gtype_int32 productId)
                                      sizeof(device->description));
 
       printf("Successfully opened '%s' device '%s' (%s), sensor %d\n", goio_deviceDesc[productId],
-             device->deviceName, device->description, charId);
+             deviceName, device->description, charId);
       num_goio_devices++;
     }
 	}
@@ -328,6 +338,47 @@ void GoIO_CollectMeasurements(struct aqx_measurement *measurement)
 /**********************************************************************
  * NGIO device interaction
  **********************************************************************/
+
+void NGIO_OpenConnectedDevicesOfType(gtype_uint32 deviceType)
+{
+	char deviceName[NGIO_MAX_SIZE_DEVICE_NAME];
+	NGIO_DEVICE_LIST_HANDLE hDeviceList;
+	gtype_uint32 sig, mask, numDevices;
+	gtype_int32 status = 0;
+  struct ngio_device *device;
+  int i;
+
+  NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
+  hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
+  fprintf(stderr, "# devices: %d\n", numDevices);
+  for (int i = 0; i < numDevices; i++) {
+    device = &ngio_devices[num_ngio_devices];
+    device->deviceType = deviceType;
+    status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, i,
+                                                 deviceName, sizeof(deviceName),
+                                                 &mask);
+    if (!status) {
+      device->hDevice = NGIO_Device_Open(g_hNGIOlib, deviceName, 0);
+      if (device->hDevice) {
+        fprintf(stderr, "successfully opened NGIO device, type: %d, handle: %d\n",
+                device->deviceType, device->hDevice);
+        num_ngio_devices++;
+      }
+    }
+  }
+  NGIO_CloseDeviceListSnapshot(hDeviceList);
+}
+
+void NGIO_OpenAllConnectedDevices()
+{  
+  fprintf(stderr, "searching for LabQuest devices\n");
+  NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST);
+  fprintf(stderr, "searching for LabQuest Mini devices\n");
+  NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST_MINI);
+  fprintf(stderr, "searching for LabQuest 2 devices\n");
+  NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST2);
+  fprintf(stderr, "# NGIO devices: %d\n", num_ngio_devices);
+}
 
 NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
 {
