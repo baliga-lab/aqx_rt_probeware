@@ -55,6 +55,17 @@ extern "C" {
 #define SENSOR_NAME_DO1  "D. Oxygen"
 #define SENSOR_NAME_DO2  "D. OXYGEN"
 
+#define MAX_CONNECTED_GOIO_DEVICES 3
+
+struct goio_device {
+  GOIO_SENSOR_HANDLE hDevice;
+	gtype_int32 vendorId, productId;
+	char device_name[GOIO_MAX_SIZE_DEVICE_NAME];
+};
+
+int num_goio_devices;
+struct goio_device goio_devices[MAX_CONNECTED_GOIO_DEVICES];
+
 #define IS_GOIO_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
 
 #define IS_NGIO_PH(devname)  (devname && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
@@ -473,14 +484,33 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
+bool GoIO_GetConnectedDevices(gtype_int32 productId)
+{
+  int numDevices;
+  gtype_int32 i;
+  struct goio_device *device;
+  numDevices = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, productId);
+  for (i = 0; i < numDevices; i++) {
+		GoIO_GetNthAvailableDeviceName(device->device_name, GOIO_MAX_SIZE_DEVICE_NAME,
+                                   VERNIER_DEFAULT_VENDOR_ID, productId, i);
+		device->vendorId = VERNIER_DEFAULT_VENDOR_ID;
+		device->productId = productId;
+    num_goio_devices++;
+	}
+}
+/*
 bool GoIO_GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype_int32 *pVendorId, gtype_int32 *pProductId)
 {
-	bool bFoundDevice = false;
-	deviceName[0] = 0;
-	int numSkips = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, SKIP_DEFAULT_PRODUCT_ID);
-	int numJonahs = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, USB_DIRECT_TEMP_DEFAULT_PRODUCT_ID);
-	int numCyclopses = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, CYCLOPS_DEFAULT_PRODUCT_ID);
-	int numMiniGCs = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, MINI_GC_DEFAULT_PRODUCT_ID);
+  bool bFoundDevice = false;
+  deviceName[0] = 0;
+  int numSkips = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, SKIP_DEFAULT_PRODUCT_ID);
+  int numJonahs = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, USB_DIRECT_TEMP_DEFAULT_PRODUCT_ID);
+  int numCyclopses = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, CYCLOPS_DEFAULT_PRODUCT_ID);
+  int numMiniGCs = GoIO_UpdateListOfAvailableDevices(VERNIER_DEFAULT_VENDOR_ID, MINI_GC_DEFAULT_PRODUCT_ID);
+  fprintf(stderr, "# Skip devices: %d\n", numSkips);
+  fprintf(stderr, "# Jonah devices: %d\n", numJonahs);
+  fprintf(stderr, "# Cyclops devices: %d\n", numCyclopses);
+  fprintf(stderr, "# Mini GC devices: %d\n", numMiniGCs);
 
 	if (numSkips > 0)
 	{
@@ -513,7 +543,7 @@ bool GoIO_GetAvailableDeviceName(char *deviceName, gtype_int32 nameLength, gtype
 
 	return bFoundDevice;
 }
-
+*/
 void OSSleep(
 	unsigned long msToSleep)//milliseconds
 {
