@@ -27,6 +27,9 @@ extern "C" {
 
 #define MAX_NUM_MEASUREMENTS 100
 
+/* Remove or comment for production */
+#define DONT_SUBMIT_TO_API
+
 /* Please replace for user */
 #define REFRESH_TOKEN "1/uHlxK48dCAolwIS-FckPhaMcWMKrdO7QVbo9E_Kb_k1IgOrJDtdun6zK6XiATCKT"
 #define SYSTEM_UID "7921a6763e0011e5beb064273763ec8b"
@@ -37,6 +40,27 @@ extern "C" {
 
 #include "GoIO_DLL_interface.h"
 #include "NGIO_lib_interface.h"
+
+#define SENSOR_ID_PH     20
+#define SENSOR_ID_DO1    37
+#define SENSOR_ID_NH4    39
+#define SENSOR_ID_NO3    40
+#define SENSOR_ID_TEMP   60
+#define SENSOR_ID_DO2    99
+
+#define SENSOR_NAME_PH   "PH"
+#define SENSOR_NAME_NH4  "NH4 ISE"
+#define SENSOR_NAME_NO3  "NO3 ISE"
+#define SENSOR_NAME_TEMP "Temperature"
+#define SENSOR_NAME_DO1  "D. Oxygen"
+#define SENSOR_NAME_DO2  "D. OXYGEN"
+
+#define IS_GOIO_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
+
+#define IS_NGIO_PH(devname)  (devname && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
+#define IS_NGIO_NH4(devname) (devname && !strncmp(SENSOR_NAME_NH4, devname, sizeof(devname)))
+#define IS_NGIO_NO3(devname) (devname && !strncmp(SENSOR_NAME_NO3, devname, sizeof(devname)))
+#define IS_NGIO_DO(devname)  (devname && (!strncmp(SENSOR_NAME_DO1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_DO2, devname, sizeof(devname)) ))
 
 const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 
@@ -108,11 +132,11 @@ GOIO_SENSOR_HANDLE GoIO_OpenTemperatureDevice()
       GoIO_Sensor_DDSMem_GetLongName(hDevice, tmpstring, sizeof(tmpstring));
 
       printf("Successfully opened '%s' device '%s'.\n", goio_deviceDesc[productId], deviceName);
-      if (tmpstring && !strncmp("Temperature", tmpstring, sizeof(tmpstring))) {
-        fprintf(stderr, "Sensor id = %d (%s)\n", charId, tmpstring);      
+      if (IS_GOIO_TEMPERATURE(tmpstring)) {
+        fprintf(stderr, "Found GOIO Sensor id = %d (%s)\n", charId, tmpstring);      
       } else {
         /* We did not find the right sensor, so close it and ignore */
-        fprintf(stderr, "Did not find the right sensor: '%s'\n", tmpstring);
+        fprintf(stderr, "Unsupported GOIO Sensor id = %d ('%s')\n", charId, tmpstring);
         GoIO_Sensor_Close(hDevice);
         hDevice = NULL;
       }
@@ -175,7 +199,9 @@ NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
   status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
   NGIO_CloseDeviceListSnapshot(hDeviceList);
 
-  fprintf(stderr, "NGIO LabQuest Status: %d\n", status);
+  if (!status) {
+    fprintf(stderr, "NGIO LabQuest detected\n");
+  }
 
   if (status) {
     deviceType = NGIO_DEVTYPE_LABQUEST_MINI;
@@ -184,7 +210,9 @@ NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
     hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
     status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
     NGIO_CloseDeviceListSnapshot(hDeviceList);
-    fprintf(stderr, "NGIO LabQuest Mini Status: %d\n", status);
+    if (!status) {
+      fprintf(stderr, "NGIO LabQuest Mini detected\n");
+    }
   }
   if (status) {
     deviceType = NGIO_DEVTYPE_LABQUEST2;
@@ -193,7 +221,9 @@ NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
     hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
     status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, 0, deviceName, sizeof(deviceName), &mask);
     NGIO_CloseDeviceListSnapshot(hDeviceList);
-    fprintf(stderr, "NGIO LabQuest2 Status: %d\n", status);
+    if (!status) {
+      fprintf(stderr, "NGIO LabQuest2 detected\n");
+    }
   }
 
   if (!status) {
@@ -204,6 +234,8 @@ NGIO_DEVICE_HANDLE NGIO_OpenLabQuestDevices(gtype_uint32 *retDeviceType)
     } else {
       fprintf(stderr, "Opening NGIO Device failed !\n");
     }
+  } else {
+    fprintf(stderr, "no LabQuest connected devices detected.\n");
   }
   return retval;
 }
@@ -248,9 +280,11 @@ void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
     serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.lsbyteMswordSerialCounter;
     serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.msbyteLswordSerialCounter;
     serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.lsbyteLswordSerialCounter;
+#ifdef DEBUG
     fprintf(stderr, "LabQuest serial number(yy ww nnnnnnnn) is %02x %02x %08d\n", 
            (gtype_uint16) getNVMemResponse.serialNumber.yy, 
            (gtype_uint16) getNVMemResponse.serialNumber.ww, serialNum);
+#endif
   }
   if (!status) {
     NGIOSetSensorChannelEnableMaskParams maskParams;
@@ -305,15 +339,15 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
   gtype_real32 calbMeasurements[MAX_NUM_MEASUREMENTS];
   gtype_real32 averageCalbMeasurement;
   char units[20];
+  char longname[30];
+  int is_supported_sensor;
 
   for (channel = NGIO_CHANNEL_ID_ANALOG1; channel <= NGIO_CHANNEL_ID_ANALOG4; channel++) {
+    is_supported_sensor = 1;
     NGIO_Device_DDSMem_GetSensorNumber(hDevice, channel, &sensorId, 0, &sig, 0);
     if (sensorId != 0) {
-      char longname[30];
       longname[0] = 0;
-      fprintf(stderr, "Sensor id in channel ANALOG%d = %d", channel, sensorId);
       NGIO_Device_DDSMem_GetLongName(hDevice, channel, longname, sizeof(longname));
-      if (strlen(longname) != 0) fprintf(stderr, " Sensor Name = '%s' ", longname);
 
       int probeType = NGIO_Device_GetProbeType(hDevice, channel);
       numMeasurements = NGIO_Device_ReadRawMeasurements(hDevice, channel, rawMeasurements, NULL, MAX_NUM_MEASUREMENTS);
@@ -327,17 +361,32 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
         if (numMeasurements > 1) {
           averageCalbMeasurement = averageCalbMeasurement/numMeasurements;
         }
-        if (!strncmp("NH4 ISE", longname, 7)) {
+        
+        if (IS_NGIO_PH(longname)) {
+          measurement->ph = averageCalbMeasurement;
+        } else if (IS_NGIO_NH4(longname)) {
           measurement->ammonium = averageCalbMeasurement;
+        } else if (IS_NGIO_NO3(longname)) {
+          measurement->nitrate = averageCalbMeasurement;
+        } else if (IS_NGIO_DO(longname)) {
+          measurement->o2 = averageCalbMeasurement;
+        } else {
+          fprintf(stderr, "Unsupported Sensor detected in ANALOG%d = %d ('%s')\n", channel, sensorId, longname);
+          is_supported_sensor = 0;
         }
 
-        gtype_real32 a, b, c;
-        unsigned char activeCalPage = 0;
-        NGIO_Device_DDSMem_GetActiveCalPage(hDevice, channel, &activeCalPage);
-        NGIO_Device_DDSMem_GetCalPage(hDevice, channel, activeCalPage, &a, &b, &c, units, sizeof(units));            
-        fprintf(stderr, "; average of %d measurements = %8.3f %s .", numMeasurements, averageCalbMeasurement, units);
+        /*
+          TODO: note that the DO sensor can measure either "mg/l" or "PCT"
+         */
+        if (is_supported_sensor) {
+          gtype_real32 a, b, c;
+          unsigned char activeCalPage = 0;
+          NGIO_Device_DDSMem_GetActiveCalPage(hDevice, channel, &activeCalPage);
+          NGIO_Device_DDSMem_GetCalPage(hDevice, channel, activeCalPage, &a, &b, &c, units, sizeof(units));
+          fprintf(stderr, "Sensor id in channel ANALOG%d = %d ('%s')", channel, sensorId, longname);
+          fprintf(stderr, "; average of %d measurements = %8.3f %s\n", numMeasurements, averageCalbMeasurement, units);
+        }
       }
-      fprintf(stderr, "\n");
     }
   }
 }
@@ -385,21 +434,25 @@ int main(int argc, char* argv[])
 
       if (hTempDevice) {
         measurement.temperature = GoIO_CollectMeasurement(hTempDevice);
+        fprintf(stderr, "GOIO temperature: %f\n", measurement.temperature);
       }
 
       if (hLabQuestDevice) {
         NGIO_CollectMeasurements(hLabQuestDevice, &measurement);
         NGIO_StopMeasurements(hLabQuestDevice);
       }
+#ifndef DONT_SUBMIT_TO_API
       /* Register time after all measurements were taken */
       time(&measurement.time);
       aqx_add_measurement(&measurement);
+#endif
     }
 
     /* Make sure we did not lose any measurements */
+#ifndef DONT_SUBMIT_TO_API
     fprintf(stderr, "Submitting measurements...\n");
     aqx_client_flush();
-
+#endif
   } else {
     fprintf(stderr, "no devices connected (%d), don't submit\n", any_devices_connected);
   }
