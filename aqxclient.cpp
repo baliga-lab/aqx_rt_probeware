@@ -3,6 +3,8 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 #include <memory.h>
 
 #ifdef TARGET_OS_WIN
@@ -20,15 +22,14 @@
 extern "C" {
 #include "aqxapi_client.h"
 }
-/*
+
 #include <microhttpd.h>
 #define HTTP_PORT 8080
-*/
 
 #define MAX_NUM_MEASUREMENTS 100
 
 /* Remove or comment for production */
-#define DONT_SUBMIT_TO_API
+//#define DONT_SUBMIT_TO_API
 
 /* Please replace for user */
 #define REFRESH_TOKEN "1/uHlxK48dCAolwIS-FckPhaMcWMKrdO7QVbo9E_Kb_k1IgOrJDtdun6zK6XiATCKT"
@@ -97,7 +98,7 @@ void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice);
 
 static void OSSleep(unsigned long msToSleep);
 
-/*
+
 int answer_to_connection (void *cls, struct MHD_Connection *connection,
                           const char *url,
                           const char *method, const char *version,
@@ -114,12 +115,61 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
   MHD_destroy_response (response);
   return ret;
 }
-*/
+
+
+struct aqxclient_config {
+  char system_uid[48];
+  char refresh_token[100];
+  int send_interval_secs;
+};
+
+
+void parse_config_line(struct aqxclient_config *cfg, char *line)
+{
+  /* remove trailing white space */
+  int line_end = strlen(line);
+  while (line_end > 0 && isspace(line[line_end - 1])) {
+    line[line_end - 1] = 0;
+    line_end--;
+  }
+
+  /* extract configuration settings */
+  if (!strncmp(line, "system_uid=", strlen("system_uid="))) {
+    strncpy(cfg->system_uid, &line[strlen("system_uid=")], sizeof(cfg->system_uid));
+  } else if (!strncmp(line, "refresh_token=", strlen("refresh_token="))) {
+    strncpy(cfg->refresh_token, &line[strlen("refresh_token=")], sizeof(cfg->refresh_token));
+  } else if (!strncmp(line, "send_interval_secs=", strlen("send_interval_secs="))) {
+    fprintf(stderr, "parsing int at: '%s'\n", &line[strlen("send_interval_secs=")]);
+    cfg->send_interval_secs = atoi(&line[strlen("send_interval_secs=")]);
+  }
+}
+
+static struct aqxclient_config *read_config()
+{
+  FILE *fp = fopen("config.ini", "r");
+  static char line_buffer[100], *s;
+  static struct aqxclient_config cfg;
+
+  if (fp) {
+    fprintf(stderr, "configuration file opened\n");
+    while (fgets(line_buffer, sizeof(line_buffer), fp)) {
+      parse_config_line(&cfg, line_buffer);
+    }
+    fprintf(stderr, "system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
+            cfg.system_uid, cfg.refresh_token, cfg.send_interval_secs);
+    fclose(fp);
+  }
+  return &cfg;
+}
 
 int init_system()
 {
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
-  struct aqx_client_options aqx_options = {SYSTEM_UID, REFRESH_TOKEN, SEND_INTERVAL_SECS};
+  struct aqx_client_options aqx_options; // = {SYSTEM_UID, REFRESH_TOKEN, SEND_INTERVAL_SECS};
+  struct aqxclient_config *cfg = read_config();
+  aqx_options.system_uid = cfg->system_uid;
+  aqx_options.oauth2_refresh_token = cfg->refresh_token;
+  aqx_options.send_interval_secs = cfg->send_interval_secs;
 
 	GoIO_Init();
 	GoIO_GetDLLVersion(&goio_major, &goio_minor);
@@ -143,7 +193,7 @@ void cleanup_system()
 
 int main(int argc, char* argv[])
 {
-  /* struct MHD_Daemon *daemon; */
+  struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
   int any_devices_connected = 0;
   int i, j;
@@ -153,9 +203,6 @@ int main(int argc, char* argv[])
   // Open all connected GOIO devices
   GoIO_OpenAllConnectedDevices();
   NGIO_OpenAllConnectedDevices();
-
-  //NGIO_DEVICE_HANDLE hLabQuestDevice = NGIO_OpenLabQuestDevices(&ngio_deviceType);
-  //NGIO_DEVICE_HANDLE hLabQuestDevice = ngio_devices[0].hDevice; // HACK
 
   any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
 
@@ -198,14 +245,17 @@ int main(int argc, char* argv[])
   }
 
   cleanup_system();
-  /*
+
+  fprintf(stderr, "starting the HTTP daemon...");
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
   if (daemon) {
+    fprintf(stderr, "HTTP daemon started...");
     getchar();
+    fprintf(stderr, "HTTP daemon stopped...");
     MHD_stop_daemon(daemon);
-    }
-  */
+  }
+
 	return 0;
 }
 
