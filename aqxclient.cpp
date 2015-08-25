@@ -31,11 +31,6 @@ extern "C" {
 /* Remove or comment for production */
 //#define DONT_SUBMIT_TO_API
 
-/* Please replace for user */
-#define REFRESH_TOKEN "1/uHlxK48dCAolwIS-FckPhaMcWMKrdO7QVbo9E_Kb_k1IgOrJDtdun6zK6XiATCKT"
-#define SYSTEM_UID "7921a6763e0011e5beb064273763ec8b"
-#define SEND_INTERVAL_SECS 60
-
 /* TODO: This is actually a feature of the measuring component */
 #define SECONDS_PER_SAMPLE 1
 
@@ -165,7 +160,7 @@ static struct aqxclient_config *read_config()
 int init_system()
 {
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
-  struct aqx_client_options aqx_options; // = {SYSTEM_UID, REFRESH_TOKEN, SEND_INTERVAL_SECS};
+  struct aqx_client_options aqx_options;
   struct aqxclient_config *cfg = read_config();
   aqx_options.system_uid = cfg->system_uid;
   aqx_options.oauth2_refresh_token = cfg->refresh_token;
