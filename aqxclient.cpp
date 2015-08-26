@@ -84,14 +84,12 @@ struct ngio_device ngio_devices[MAX_CONNECTED_NGIO_DEVICES];
 const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 int should_exit = 0;
 
-NGIO_LIBRARY_HANDLE g_hNGIOlib = NULL;
-
 void GoIO_OpenAllConnectedDevices();
 void GoIO_CloseAllConnectedDevices();
 void GoIO_SendIORequests();
 void GoIO_CollectMeasurements(struct aqx_measurement *measurement);
 
-void NGIO_OpenAllConnectedDevices();
+void NGIO_OpenAllConnectedDevices(NGIO_LIBRARY_HANDLE hNGIOlib);
 void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType);
 void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement *measurement);
 void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice);
@@ -167,30 +165,32 @@ static struct aqxclient_config *read_config()
   return &cfg;
 }
 
-int init_system()
+NGIO_LIBRARY_HANDLE init_system()
 {
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
   struct aqx_client_options aqx_options;
+  NGIO_LIBRARY_HANDLE hNGIOlib;
   struct aqxclient_config *cfg = read_config();
+
   aqx_options.system_uid = cfg->system_uid;
   aqx_options.oauth2_refresh_token = cfg->refresh_token;
   aqx_options.send_interval_secs = cfg->send_interval_secs;
 
 	GoIO_Init();
 	GoIO_GetDLLVersion(&goio_major, &goio_minor);
-	g_hNGIOlib = NGIO_Init();
-	NGIO_GetDLLVersion(g_hNGIOlib, &ngio_major, &ngio_minor);
+	hNGIOlib = NGIO_Init();
+	NGIO_GetDLLVersion(hNGIOlib, &ngio_major, &ngio_minor);
 
 	fprintf(stderr, "aqx_client V0.001 - (c) 2015 Institute for Systems Biology\nGoIO library version %d.%d\nNGIO library version %d.%d\n",
           goio_major, goio_minor, ngio_major, ngio_minor);
 
   aqx_client_init(&aqx_options);
-  return 1;
+  return hNGIOlib;
 }
 
-void cleanup_system()
+void cleanup_system(NGIO_LIBRARY_HANDLE hNGIOlib)
 {
-  NGIO_Uninit(g_hNGIOlib);
+  NGIO_Uninit(hNGIOlib);
 	GoIO_Uninit();
   aqx_client_cleanup();
 }
@@ -209,12 +209,13 @@ int main(int argc, char* argv[])
 
   int any_devices_connected = 0;
   int i, j, retval;
+  NGIO_LIBRARY_HANDLE hNGIOlib;
 
-  init_system();
+  hNGIOlib = init_system();
 
   // Open all connected GOIO devices
   GoIO_OpenAllConnectedDevices();
-  NGIO_OpenAllConnectedDevices();
+  NGIO_OpenAllConnectedDevices(hNGIOlib);
 
   any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
 
@@ -256,7 +257,7 @@ int main(int argc, char* argv[])
     NGIO_Device_Close(ngio_devices[j].hDevice);
   }
 
-  cleanup_system();
+  cleanup_system(hNGIOlib);
 
   fprintf(stderr, "starting the HTTP daemon...");
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
@@ -434,7 +435,7 @@ void GoIO_CollectMeasurements(struct aqx_measurement *measurement)
  * NGIO device interaction
  **********************************************************************/
 
-void NGIO_OpenConnectedDevicesOfType(gtype_uint32 deviceType)
+void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 deviceType)
 {
 	char deviceName[NGIO_MAX_SIZE_DEVICE_NAME];
 	NGIO_DEVICE_LIST_HANDLE hDeviceList;
@@ -443,8 +444,8 @@ void NGIO_OpenConnectedDevicesOfType(gtype_uint32 deviceType)
   struct ngio_device *device;
   int i;
 
-  NGIO_SearchForDevices(g_hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
-  hDeviceList = NGIO_OpenDeviceListSnapshot(g_hNGIOlib, deviceType, &numDevices, &sig);
+  NGIO_SearchForDevices(hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
+  hDeviceList = NGIO_OpenDeviceListSnapshot(hNGIOlib, deviceType, &numDevices, &sig);
   fprintf(stderr, "# devices: %d\n", numDevices);
   for (int i = 0; i < numDevices; i++) {
     device = &ngio_devices[num_ngio_devices];
@@ -453,7 +454,7 @@ void NGIO_OpenConnectedDevicesOfType(gtype_uint32 deviceType)
                                                  deviceName, sizeof(deviceName),
                                                  &mask);
     if (!status) {
-      device->hDevice = NGIO_Device_Open(g_hNGIOlib, deviceName, 0);
+      device->hDevice = NGIO_Device_Open(hNGIOlib, deviceName, 0);
       if (device->hDevice) {
         fprintf(stderr, "successfully opened NGIO device, type: %d, handle: %d\n",
                 device->deviceType, device->hDevice);
@@ -464,14 +465,14 @@ void NGIO_OpenConnectedDevicesOfType(gtype_uint32 deviceType)
   NGIO_CloseDeviceListSnapshot(hDeviceList);
 }
 
-void NGIO_OpenAllConnectedDevices()
+void NGIO_OpenAllConnectedDevices(NGIO_LIBRARY_HANDLE hNGIOlib)
 {  
   fprintf(stderr, "searching for LabQuest devices\n");
-  NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST);
+  NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST);
   fprintf(stderr, "searching for LabQuest Mini devices\n");
-  NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST_MINI);
+  NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST_MINI);
   fprintf(stderr, "searching for LabQuest 2 devices\n");
-  NGIO_OpenConnectedDevicesOfType(NGIO_DEVTYPE_LABQUEST2);
+  NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST2);
   fprintf(stderr, "# NGIO devices: %d\n", num_ngio_devices);
 }
 
