@@ -16,9 +16,11 @@
 #endif
 #ifdef TARGET_OS_LINUX
 #include <sys/time.h>
+#define HAS_SIGACTION
 #endif
 #ifdef TARGET_OS_MAC
 #include <Carbon/Carbon.h>
+#define HAS_SIGACTION
 #endif
 
 extern "C" {
@@ -101,7 +103,6 @@ void signal_handler(int signum)
   fprintf(stderr, "Signal: %d received\n", signum);
   should_exit = 1;
 }
-
 
 int answer_to_connection (void *cls, struct MHD_Connection *connection,
                           const char *url,
@@ -199,9 +200,15 @@ int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
-  sighandler_t prev_sig_handler;
+
+#ifdef HAS_SIGACTION
+  struct sigaction act;
+#else
+  sighandler_t prev_sigint_handler, prev_sigterm_handler;
+#endif
+
   int any_devices_connected = 0;
-  int i, j;
+  int i, j, retval;
 
   init_system();
 
@@ -256,14 +263,31 @@ int main(int argc, char* argv[])
                             &answer_to_connection, NULL, MHD_OPTION_END);
 
   /*
-    We install a simple signal handler so we can cleanly
-    shutdown. TODO: Windows might have to add a stop handler
+    We install a simple signal handler so we can cleanly shutdown.
+    INT for Ctrl-C and TERM for start-stop handler signals.
+
+    Windows does not have sigaction, but sigaction is recommended, so
+    we might have put an ifdef here
+    TODO: Windows might have to add another stop handler for stop service
   */
-  prev_sig_handler = signal(SIGINT, signal_handler);
-  if (prev_sig_handler == SIG_ERR) {
+#ifdef HAS_SIGACTION
+  fprintf(stderr, "using sigaction() to install signal handler\n");
+  memset(&act, 0, sizeof(struct sigaction));
+  act.sa_flags = SA_SIGINFO;
+  act.sa_handler = signal_handler;
+  retval = sigaction(SIGTERM, &act, NULL);
+  retval = sigaction(SIGINT, &act, NULL);
+#else
+  fprintf(stderr, "using signal() to install signal handler\n");
+  prev_sigint_handler = signal(SIGINT, signal_handler);
+  prev_sigterm_handler = signal(SIGTERM, signal_handler);
+  if (prev_sigint_handler == SIG_ERR) {
     fprintf(stderr, "could not install signal handler\n");
   }
-
+  if (prev_sigterm_handler == SIG_ERR) {
+    fprintf(stderr, "could not install signal handler\n");
+  }
+#endif
 
   if (daemon) {
     fprintf(stderr, "HTTP daemon started...");
