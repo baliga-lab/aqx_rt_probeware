@@ -7,6 +7,8 @@
 #include <ctype.h>
 #include <memory.h>
 
+#include <signal.h>
+
 #ifdef TARGET_OS_WIN
 #define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
 #include <windows.h>
@@ -78,6 +80,7 @@ struct ngio_device ngio_devices[MAX_CONNECTED_NGIO_DEVICES];
 #define IS_DO(devname)  (devname && (!strncmp(SENSOR_NAME_DO1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_DO2, devname, sizeof(devname)) ))
 
 const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
+int should_exit = 0;
 
 NGIO_LIBRARY_HANDLE g_hNGIOlib = NULL;
 
@@ -92,6 +95,12 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
 void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice);
 
 static void OSSleep(unsigned long msToSleep);
+
+void signal_handler(int signum)
+{
+  fprintf(stderr, "Signal: %d received\n", signum);
+  should_exit = 1;
+}
 
 
 int answer_to_connection (void *cls, struct MHD_Connection *connection,
@@ -190,6 +199,7 @@ int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
+  sighandler_t prev_sig_handler;
   int any_devices_connected = 0;
   int i, j;
 
@@ -244,9 +254,22 @@ int main(int argc, char* argv[])
   fprintf(stderr, "starting the HTTP daemon...");
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
+
+  /*
+    We install a simple signal handler so we can cleanly
+    shutdown. TODO: Windows might have to add a stop handler
+  */
+  prev_sig_handler = signal(SIGINT, signal_handler);
+  if (prev_sig_handler == SIG_ERR) {
+    fprintf(stderr, "could not install signal handler\n");
+  }
+
+
   if (daemon) {
     fprintf(stderr, "HTTP daemon started...");
-    getchar();
+    while (!should_exit) {
+      OSSleep(1000);
+    }
     fprintf(stderr, "HTTP daemon stopped...");
     MHD_stop_daemon(daemon);
   }
