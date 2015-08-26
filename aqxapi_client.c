@@ -142,6 +142,8 @@ int submit_measurements(const char *access_token, const char *json_str)
 
     if (result != CURLE_OK) {
       fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+      /* TODO: Handle submit error
+         maybe retry ? After that, store in a file */
     } else {
       json_object *obj, *error_obj;
       obj = json_tokener_parse(json_buffer);

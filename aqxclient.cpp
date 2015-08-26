@@ -23,6 +23,8 @@
 #define HAS_SIGACTION
 #endif
 
+#define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+
 extern "C" {
 #include "aqxapi_client.h"
 }
@@ -98,10 +100,13 @@ static void OSSleep(unsigned long msToSleep);
 
 void signal_handler(int signum)
 {
-  fprintf(stderr, "Signal: %d received\n", signum);
+  LOG_DEBUG("Signal: %d received\n", signum);
   should_exit = 1;
 }
 
+/*
+ * Handle the HTTP server requests here
+ */
 int answer_to_connection (void *cls, struct MHD_Connection *connection,
                           const char *url,
                           const char *method, const char *version,
@@ -111,6 +116,9 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
   const char *page  = "<html><body>Hello, browser!</body></html>";
   struct MHD_Response *response;
   int ret;
+
+  LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
+            method, url, version, upload_data);
 
   response = MHD_create_response_from_buffer (strlen (page),
                                             (void*) page, MHD_RESPMEM_PERSISTENT);
@@ -142,7 +150,7 @@ void parse_config_line(struct aqxclient_config *cfg, char *line)
   } else if (!strncmp(line, "refresh_token=", strlen("refresh_token="))) {
     strncpy(cfg->refresh_token, &line[strlen("refresh_token=")], sizeof(cfg->refresh_token));
   } else if (!strncmp(line, "send_interval_secs=", strlen("send_interval_secs="))) {
-    fprintf(stderr, "parsing int at: '%s'\n", &line[strlen("send_interval_secs=")]);
+    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen("send_interval_secs=")]);
     cfg->send_interval_secs = atoi(&line[strlen("send_interval_secs=")]);
   }
 }
@@ -154,11 +162,11 @@ static struct aqxclient_config *read_config()
   static struct aqxclient_config cfg;
 
   if (fp) {
-    fprintf(stderr, "configuration file opened\n");
+    LOG_DEBUG("configuration file opened\n");
     while (fgets(line_buffer, sizeof(line_buffer), fp)) {
       parse_config_line(&cfg, line_buffer);
     }
-    fprintf(stderr, "system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
+    LOG_DEBUG("system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
             cfg.system_uid, cfg.refresh_token, cfg.send_interval_secs);
     fclose(fp);
   }
@@ -181,7 +189,7 @@ NGIO_LIBRARY_HANDLE init_system()
 	hNGIOlib = NGIO_Init();
 	NGIO_GetDLLVersion(hNGIOlib, &ngio_major, &ngio_minor);
 
-	fprintf(stderr, "aqx_client V0.001 - (c) 2015 Institute for Systems Biology\nGoIO library version %d.%d\nNGIO library version %d.%d\n",
+	LOG_DEBUG("aqx_client V0.001 - (c) 2015 Institute for Systems Biology\nGoIO library version %d.%d\nNGIO library version %d.%d\n",
           goio_major, goio_minor, ngio_major, ngio_minor);
 
   aqx_client_init(&aqx_options);
@@ -243,11 +251,11 @@ int main(int argc, char* argv[])
 
     // Make sure we did not lose any measurements
 #ifndef DONT_SUBMIT_TO_API
-    fprintf(stderr, "Submitting measurements...\n");
+    LOG_DEBUG("Submitting measurements...\n");
     aqx_client_flush();
 #endif
   } else {
-    fprintf(stderr, "no devices connected (%d), don't submit\n", any_devices_connected);
+    LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected);
   }
 
   /* cleanup here */
@@ -258,7 +266,7 @@ int main(int argc, char* argv[])
 
   cleanup_system(hNGIOlib);
 
-  fprintf(stderr, "starting the HTTP daemon...");
+  LOG_DEBUG("starting the HTTP daemon...");
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
 
@@ -271,7 +279,7 @@ int main(int argc, char* argv[])
     TODO: Windows might have to add another stop handler for stop service
   */
 #ifdef HAS_SIGACTION
-  fprintf(stderr, "using sigaction() to install signal handler\n");
+  LOG_DEBUG("using sigaction() to install signal handler\n");
   memset(&act, 0, sizeof(struct sigaction));
   act.sa_flags = SA_SIGINFO;
   act.sa_handler = signal_handler;
@@ -279,17 +287,17 @@ int main(int argc, char* argv[])
   retval = sigaction(SIGINT, &act, NULL);
 #else
   // Windows supports signal in a very incomplete way
-  fprintf(stderr, "using signal() to install signal handler\n");
+  LOG_DEBUG("using signal() to install signal handler\n");
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 #endif
 
   if (daemon) {
-    fprintf(stderr, "HTTP daemon started...");
+    LOG_DEBUG("HTTP daemon started...");
     while (!should_exit) {
       OSSleep(1000);
     }
-    fprintf(stderr, "HTTP daemon stopped...");
+    LOG_DEBUG("HTTP daemon stopped...");
     MHD_stop_daemon(daemon);
   }
 
@@ -354,7 +362,7 @@ void GoIO_OpenAllConnectedDevices()
   GoIO_GetConnectedDevices(USB_DIRECT_TEMP_DEFAULT_PRODUCT_ID);
   GoIO_GetConnectedDevices(CYCLOPS_DEFAULT_PRODUCT_ID);
   GoIO_GetConnectedDevices(MINI_GC_DEFAULT_PRODUCT_ID);
-  fprintf(stderr, "# of connected GoIO devices: %d\n", num_goio_devices);
+  LOG_DEBUG("# of connected GoIO devices: %d\n", num_goio_devices);
 }
 
 void GoIO_CloseAllConnectedDevices()
@@ -415,13 +423,13 @@ void GoIO_CollectMeasurements(struct aqx_measurement *measurement)
   int i;
   for (i = 0; i < num_goio_devices; i++) {
     double value = GoIO_CollectMeasurement(goio_devices[i].hDevice);
-    fprintf(stderr, "sensor '%s' = %f\n", goio_devices[i].description, value);
+    LOG_DEBUG("sensor '%s' = %f\n", goio_devices[i].description, value);
     if (IS_PH(goio_devices[i].description)) measurement->ph = value;
     else if (IS_NH4(goio_devices[i].description)) measurement->ammonium = value;
     else if (IS_NO3(goio_devices[i].description)) measurement->nitrate = value;
     else if (IS_DO(goio_devices[i].description)) measurement->o2 = value;
     else if (IS_TEMPERATURE(goio_devices[i].description)) measurement->temperature = value;
-    else fprintf(stderr, "sensor '%s' not yet supported for GoIO\n", goio_devices[i].description);
+    else LOG_DEBUG("sensor '%s' not yet supported for GoIO\n", goio_devices[i].description);
   }
 }
 
@@ -440,7 +448,7 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
 
   NGIO_SearchForDevices(hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
   hDeviceList = NGIO_OpenDeviceListSnapshot(hNGIOlib, deviceType, &numDevices, &sig);
-  fprintf(stderr, "# devices: %d\n", numDevices);
+  LOG_DEBUG("# devices: %d\n", numDevices);
   for (i = 0; i < numDevices; i++) {
     device = &ngio_devices[num_ngio_devices];
     device->deviceType = deviceType;
@@ -450,8 +458,8 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
     if (!status) {
       device->hDevice = NGIO_Device_Open(hNGIOlib, deviceName, 0);
       if (device->hDevice) {
-        fprintf(stderr, "successfully opened NGIO device, type: %d, handle: %d\n",
-                device->deviceType, device->hDevice);
+        LOG_DEBUG("successfully opened NGIO device, type: %d, handle: %d\n",
+                  device->deviceType, device->hDevice);
         num_ngio_devices++;
       }
     }
@@ -461,13 +469,13 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
 
 void NGIO_OpenAllConnectedDevices(NGIO_LIBRARY_HANDLE hNGIOlib)
 {  
-  fprintf(stderr, "searching for LabQuest devices\n");
+  LOG_DEBUG("searching for LabQuest devices\n");
   NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST);
-  fprintf(stderr, "searching for LabQuest Mini devices\n");
+  LOG_DEBUG("searching for LabQuest Mini devices\n");
   NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST_MINI);
-  fprintf(stderr, "searching for LabQuest 2 devices\n");
+  LOG_DEBUG("searching for LabQuest 2 devices\n");
   NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST2);
-  fprintf(stderr, "# NGIO devices: %d\n", num_ngio_devices);
+  LOG_DEBUG("# NGIO devices: %d\n", num_ngio_devices);
 }
 
 void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
@@ -483,7 +491,7 @@ void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
        down on the LabQuest. */
     status = NGIO_Device_AcquireExclusiveOwnership(hDevice, NGIO_GRAB_DAQ_TIMEOUT);
     if (status) {
-      fprintf(stderr, "NGIO_Device_AcquireExclusiveOwnership() failed!\n");
+      LOG_DEBUG("NGIO_Device_AcquireExclusiveOwnership() failed!\n");
     }
 #endif
   }
@@ -511,9 +519,9 @@ void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
     serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.msbyteLswordSerialCounter;
     serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.lsbyteLswordSerialCounter;
 #ifdef DEBUG
-    fprintf(stderr, "LabQuest serial number(yy ww nnnnnnnn) is %02x %02x %08d\n", 
-           (gtype_uint16) getNVMemResponse.serialNumber.yy, 
-           (gtype_uint16) getNVMemResponse.serialNumber.ww, serialNum);
+    LOG_DEBUG("LabQuest serial number(yy ww nnnnnnnn) is %02x %02x %08d\n", 
+              (gtype_uint16) getNVMemResponse.serialNumber.yy, 
+              (gtype_uint16) getNVMemResponse.serialNumber.ww, serialNum);
 #endif
   }
   if (!status) {
@@ -597,7 +605,8 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
         else if (IS_NO3(longname)) measurement->nitrate = averageCalbMeasurement;
         else if (IS_DO(longname)) measurement->o2 = averageCalbMeasurement;
         else {
-          fprintf(stderr, "Unsupported Sensor detected in ANALOG%d = %d ('%s')\n", channel, sensorId, longname);
+          LOG_DEBUG("Unsupported Sensor detected in ANALOG%d = %d ('%s')\n",
+                    channel, sensorId, longname);
           is_supported_sensor = 0;
         }
 
@@ -609,8 +618,9 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
           unsigned char activeCalPage = 0;
           NGIO_Device_DDSMem_GetActiveCalPage(hDevice, channel, &activeCalPage);
           NGIO_Device_DDSMem_GetCalPage(hDevice, channel, activeCalPage, &a, &b, &c, units, sizeof(units));
-          fprintf(stderr, "Sensor id in channel ANALOG%d = %d ('%s')", channel, sensorId, longname);
-          fprintf(stderr, "; average of %d measurements = %8.3f %s\n", numMeasurements, averageCalbMeasurement, units);
+          LOG_DEBUG("Sensor id in channel ANALOG%d = %d ('%s')", channel, sensorId, longname);
+          LOG_DEBUG("; average of %d measurements = %8.3f %s\n",
+                    numMeasurements, averageCalbMeasurement, units);
         }
       }
     }
