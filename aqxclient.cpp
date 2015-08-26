@@ -203,12 +203,11 @@ int main(int argc, char* argv[])
 
 #ifdef HAS_SIGACTION
   struct sigaction act;
-#else
-  sighandler_t prev_sigint_handler, prev_sigterm_handler;
+  int retval;
 #endif
 
   int any_devices_connected = 0;
-  int i, j, retval;
+  int i, j;
   NGIO_LIBRARY_HANDLE hNGIOlib;
 
   hNGIOlib = init_system();
@@ -279,15 +278,10 @@ int main(int argc, char* argv[])
   retval = sigaction(SIGTERM, &act, NULL);
   retval = sigaction(SIGINT, &act, NULL);
 #else
+  // Windows supports signal in a very incomplete way
   fprintf(stderr, "using signal() to install signal handler\n");
-  prev_sigint_handler = signal(SIGINT, signal_handler);
-  prev_sigterm_handler = signal(SIGTERM, signal_handler);
-  if (prev_sigint_handler == SIG_ERR) {
-    fprintf(stderr, "could not install signal handler\n");
-  }
-  if (prev_sigterm_handler == SIG_ERR) {
-    fprintf(stderr, "could not install signal handler\n");
-  }
+  signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
 #endif
 
   if (daemon) {
@@ -447,7 +441,7 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
   NGIO_SearchForDevices(hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
   hDeviceList = NGIO_OpenDeviceListSnapshot(hNGIOlib, deviceType, &numDevices, &sig);
   fprintf(stderr, "# devices: %d\n", numDevices);
-  for (int i = 0; i < numDevices; i++) {
+  for (i = 0; i < numDevices; i++) {
     device = &ngio_devices[num_ngio_devices];
     device->deviceType = deviceType;
     status = NGIO_DeviceListSnapshot_GetNthEntry(hDeviceList, i,
