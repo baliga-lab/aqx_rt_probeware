@@ -221,20 +221,50 @@ void cleanup_system(NGIO_LIBRARY_HANDLE hNGIOlib)
   aqx_client_cleanup();
 }
 
+void measure()
+{
+  struct aqx_measurement measurement;
+  int any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
+  int i, j;
+
+  if (any_devices_connected) {
+    GoIO_SendIORequests();
+    for (j = 0; j < num_ngio_devices; j++) {
+      NGIO_SendIORequest(ngio_devices[j].hDevice, ngio_devices[j].deviceType);
+    }
+
+    OSSleep(1000); // wait for a second
+    GoIO_CollectMeasurements(&measurement);
+
+    for (j = 0; j < num_ngio_devices; j++) {
+      NGIO_CollectMeasurements(ngio_devices[j].hDevice, &measurement);
+      NGIO_StopMeasurements(ngio_devices[j].hDevice);
+    }
+#ifndef DONT_SUBMIT_TO_API
+    // Register time after all measurements were taken
+    time(&measurement.time);
+    aqx_add_measurement(&measurement);
+#endif
+
+  } else {
+    OSSleep(1000); // wait for a second
+    LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected);
+  }
+
+}
+
 
 int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
-  struct aqx_measurement measurement;
   struct stemp_dict *dict;
+  int i;
 
 #ifdef HAS_SIGACTION
   struct sigaction act;
   int retval;
 #endif
 
-  int any_devices_connected = 0;
-  int i, j;
   NGIO_LIBRARY_HANDLE hNGIOlib;
 
   hNGIOlib = init_system();
@@ -243,47 +273,6 @@ int main(int argc, char* argv[])
   GoIO_OpenAllConnectedDevices();
   NGIO_OpenAllConnectedDevices(hNGIOlib);
 
-  any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
-
-  if (any_devices_connected) {
-    OSSleep(1000); // sync time just in case
-
-    for (i = 0; i < 1000; i ++) {
-      GoIO_SendIORequests();
-      for (j = 0; j < num_ngio_devices; j++) {
-        NGIO_SendIORequest(ngio_devices[j].hDevice, ngio_devices[j].deviceType);
-      }
-
-      OSSleep(1000); // wait for a second
-      GoIO_CollectMeasurements(&measurement);
-
-      for (j = 0; j < num_ngio_devices; j++) {
-        NGIO_CollectMeasurements(ngio_devices[j].hDevice, &measurement);
-        NGIO_StopMeasurements(ngio_devices[j].hDevice);
-      }
-#ifndef DONT_SUBMIT_TO_API
-      // Register time after all measurements were taken
-      time(&measurement.time);
-      aqx_add_measurement(&measurement);
-#endif
-    }
-
-    // Make sure we did not lose any measurements
-#ifndef DONT_SUBMIT_TO_API
-    LOG_DEBUG("Submitting measurements...\n");
-    aqx_client_flush();
-#endif
-  } else {
-    LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected);
-  }
-
-  /* cleanup here */
-  GoIO_CloseAllConnectedDevices();
-  for (j = 0; j < num_ngio_devices; j++) {
-    NGIO_Device_Close(ngio_devices[j].hDevice);
-  }
-
-  cleanup_system(hNGIOlib);
 
   LOG_DEBUG("starting the HTTP daemon...");
   daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
@@ -313,12 +302,27 @@ int main(int argc, char* argv[])
 
   if (daemon) {
     LOG_DEBUG("HTTP daemon started...");
+    OSSleep(1000); // sync time just in case
+
     while (!should_exit) {
-      OSSleep(1000);
+      measure();
     }
+
+    // Make sure we did not lose any measurements
+#ifndef DONT_SUBMIT_TO_API
+    LOG_DEBUG("Submitting final measurements...\n");
+    aqx_client_flush();
+#endif
+
     LOG_DEBUG("HTTP daemon stopped...");
     MHD_stop_daemon(daemon);
   }
+
+  /* cleanup here */
+  GoIO_CloseAllConnectedDevices();
+  for (i = 0; i < num_ngio_devices; i++) NGIO_Device_Close(ngio_devices[i].hDevice);
+
+  cleanup_system(hNGIOlib);
 
   dict = stemp_new_dict();
   stemp_dict_put(dict, "hello", "world");

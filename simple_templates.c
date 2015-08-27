@@ -115,7 +115,38 @@ const char *stemp_dict_get(struct stemp_dict *dict, const char *key)
   return NULL;
 }
 
+char *copy_char(char *dest, const char *src, int *i, int *j, int src_size,
+           int *dest_size)
+{
+  dest[*j++] = src[*i++];
+  if (*j >= *dest_size) {
+    /* TODO resize */
+  }
+  return dest;
+}
+
 char *stemp_apply_template(const char *tpl_str, struct stemp_dict *dict)
 {
-  return NULL;
+  int input_size, output_size;
+  char *output;
+
+  if (!tpl_str) return NULL;
+  input_size = strlen(tpl_str);
+  output_size = input_size * 2;
+  output = malloc(output_size);
+  if (output) {
+    int i = 0, j = 0;
+    while (i < input_size) {
+      if (tpl_str[i] == '{') {
+        if (i < input_size - 1 && tpl_str[i + 1] == '{') {
+          /* TODO: Replace */
+        } else {
+          output = copy_char(output, tpl_str, &i, &j, input_size, &output_size);
+        }
+      } else {
+        output = copy_char(output, tpl_str, &i, &j, input_size, &output_size);
+      }
+    }
+  }
+  return output;
 }
