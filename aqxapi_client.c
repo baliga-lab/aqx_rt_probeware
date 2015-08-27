@@ -84,7 +84,7 @@ const char *get_access_token(const char *refresh_token)
     result = curl_easy_perform(curl);
 
     if (result != CURLE_OK) {
-      fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
     } else {
       json_object *obj;
       obj = json_tokener_parse(json_buffer);
@@ -99,7 +99,7 @@ const char *get_access_token(const char *refresh_token)
           strncpy(access_token, recvd_token, ACCESS_TOKEN_MAXLEN);
           retval = access_token;
         } else {
-          fprintf(stderr, "no access token found\n");
+          LOG_DEBUG("no access token found\n");
         }
       }
       json_object_put(obj);
@@ -141,7 +141,7 @@ int submit_measurements(const char *access_token, const char *json_str)
     result = curl_easy_perform(curl);
 
     if (result != CURLE_OK) {
-      fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
       /* TODO: Handle submit error
          maybe retry ? After that, store in a file */
     } else {
@@ -151,9 +151,9 @@ int submit_measurements(const char *access_token, const char *json_str)
 
       if (json_object_object_get_ex(obj, "error", &error_obj)) {
         const char *error_msg = json_object_get_string(error_obj);
-        fprintf(stderr, "Error: '%s'\n", error_msg);
+        LOG_DEBUG("Error: '%s'\n", error_msg);
       } else {
-        fprintf(stderr, "everything ok: '%s'\n", json_object_get_string(obj));
+        LOG_DEBUG("everything ok: '%s'\n", json_object_get_string(obj));
         retval = 1;
       }
       json_object_put(obj);
@@ -227,11 +227,11 @@ void aqx_client_flush()
     const char *json_str, *access_token;
     arr = serialize_measurements();
     json_str = json_object_get_string(arr);
-    fprintf(stderr, "Submit: %s\n", json_str);
+    LOG_DEBUG("Submit: %s\n", json_str);
 
     access_token = get_access_token(config.oauth2_refresh_token);
     if (access_token) {
-      fprintf(stderr, "received access token: '%s'\n", access_token);
+      LOG_DEBUG("received access token: '%s'\n", access_token);
       submit_measurements(access_token, json_str);
     }
 

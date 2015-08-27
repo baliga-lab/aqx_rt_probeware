@@ -23,8 +23,6 @@
 #define HAS_SIGACTION
 #endif
 
-#define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
-
 extern "C" {
 #include "aqxapi_client.h"
 }
