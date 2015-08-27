@@ -24,6 +24,7 @@
 
 extern "C" {
 #include "aqxapi_client.h"
+#include "simple_templates.h"
 }
 
 #include <microhttpd.h>
@@ -225,6 +226,7 @@ int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
   struct aqx_measurement measurement;
+  struct stemp_dict *dict;
 
 #ifdef HAS_SIGACTION
   struct sigaction act;
@@ -317,6 +319,11 @@ int main(int argc, char* argv[])
     LOG_DEBUG("HTTP daemon stopped...");
     MHD_stop_daemon(daemon);
   }
+
+  dict = stemp_new_dict();
+  stemp_dict_put(dict, "hello", "world");
+  LOG_DEBUG("Value for hello: '%s'\n", stemp_dict_get(dict, "hello"));
+  stemp_free_dict(dict);
 
 	return 0;
 }
