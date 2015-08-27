@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <memory.h>
-
 #include <signal.h>
 
 #ifdef TARGET_OS_WIN
@@ -113,16 +112,36 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
 {
   const char *page  = "<html><body>Hello, browser!</body></html>";
   struct MHD_Response *response;
-  int ret;
+  FILE *fp;
+  int ret, fd;
+  const char *filepath;
 
   LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
             method, url, version, upload_data);
+  if (!strcmp(url, "/favicon.ico")) {
+    filepath = "htdocs/favicon.ico";
+  } else {
+    filepath = "htdocs/index.html";
+  }
 
+  fp = fopen(filepath, "r");
+  if (fp) {
+    uint64_t size;
+    fseek(fp, 0L, SEEK_END);
+    size = ftell(fp);
+    rewind(fp);
+    response = MHD_create_response_from_fd(size, fileno(fp));
+    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response); /* destroy will auto close the file */
+    return ret;
+  } else {
+    LOG_DEBUG("open failed\n");
+    return ret;
+  }
+  /*
   response = MHD_create_response_from_buffer (strlen (page),
                                             (void*) page, MHD_RESPMEM_PERSISTENT);
-  ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
-  MHD_destroy_response (response);
-  return ret;
+  */
 }
 
 
