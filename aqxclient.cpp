@@ -7,6 +7,9 @@
 #include <ctype.h>
 #include <memory.h>
 
+#include <unistd.h>
+#include <stdint.h>
+
 #include <signal.h>
 
 #ifdef TARGET_OS_WIN
