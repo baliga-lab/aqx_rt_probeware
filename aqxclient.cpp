@@ -113,7 +113,6 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
                           const char *upload_data,
                           size_t *upload_data_size, void **con_cls)
 {
-  const char *page  = "<html><body>Hello, browser!</body></html>";
   struct MHD_Response *response;
   FILE *fp;
   int ret, fd;
@@ -141,14 +140,11 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
     LOG_DEBUG("open failed\n");
     return ret;
   }
-  /*
-  response = MHD_create_response_from_buffer (strlen (page),
-                                            (void*) page, MHD_RESPMEM_PERSISTENT);
-  */
 }
 
 
 struct aqxclient_config {
+  char service_url[200];
   char system_uid[48];
   char refresh_token[100];
   int send_interval_secs;
@@ -165,7 +161,9 @@ void parse_config_line(struct aqxclient_config *cfg, char *line)
   }
 
   /* extract configuration settings */
-  if (!strncmp(line, "system_uid=", strlen("system_uid="))) {
+  if (!strncmp(line, "service_url=", strlen("service_url="))) {
+    strncpy(cfg->service_url, &line[strlen("service_url=")], sizeof(cfg->service_url));
+  } else if (!strncmp(line, "system_uid=", strlen("system_uid="))) {
     strncpy(cfg->system_uid, &line[strlen("system_uid=")], sizeof(cfg->system_uid));
   } else if (!strncmp(line, "refresh_token=", strlen("refresh_token="))) {
     strncpy(cfg->refresh_token, &line[strlen("refresh_token=")], sizeof(cfg->refresh_token));
@@ -178,7 +176,7 @@ void parse_config_line(struct aqxclient_config *cfg, char *line)
 static struct aqxclient_config *read_config()
 {
   FILE *fp = fopen("config.ini", "r");
-  static char line_buffer[100], *s;
+  static char line_buffer[200], *s;
   static struct aqxclient_config cfg;
 
   if (fp) {
@@ -186,8 +184,8 @@ static struct aqxclient_config *read_config()
     while (fgets(line_buffer, sizeof(line_buffer), fp)) {
       parse_config_line(&cfg, line_buffer);
     }
-    LOG_DEBUG("system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
-            cfg.system_uid, cfg.refresh_token, cfg.send_interval_secs);
+    LOG_DEBUG("service url: '%s', system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
+              cfg.service_url, cfg.system_uid, cfg.refresh_token, cfg.send_interval_secs);
     fclose(fp);
   }
   return &cfg;
@@ -200,6 +198,7 @@ NGIO_LIBRARY_HANDLE init_system()
   NGIO_LIBRARY_HANDLE hNGIOlib;
   struct aqxclient_config *cfg = read_config();
 
+  aqx_options.service_url = cfg->service_url;
   aqx_options.system_uid = cfg->system_uid;
   aqx_options.oauth2_refresh_token = cfg->refresh_token;
   aqx_options.send_interval_secs = cfg->send_interval_secs;
@@ -325,12 +324,6 @@ int main(int argc, char* argv[])
   for (i = 0; i < num_ngio_devices; i++) NGIO_Device_Close(ngio_devices[i].hDevice);
 
   cleanup_system(hNGIOlib);
-
-  dict = stemp_new_dict();
-  stemp_dict_put(dict, "hello", "world");
-  LOG_DEBUG("Value for hello: '%s'\n", stemp_dict_get(dict, "hello"));
-  stemp_free_dict(dict);
-
 	return 0;
 }
 

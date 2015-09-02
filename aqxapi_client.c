@@ -4,11 +4,6 @@
 #include <json-c/json.h>
 #include "aqxapi_client.h"
 
-/*
-#define APP_URL "https://aquaponics.systemsbiology.net/api/v1/add-measurements/%s"
-*/
-#define APP_URL "http://localhost:5000/api/v1/add-measurements/%s"
-
 /* note that the SSL certificate is not quite ok */
 #define SKIP_PEER_VERIFICATION
 
@@ -109,7 +104,7 @@ const char *get_access_token(const char *refresh_token)
   return retval;
 }
 
-int submit_measurements(const char *access_token, const char *json_str)
+int submit_measurements(const char *service_url, const char *access_token, const char *json_str)
 {
   CURL *curl;
   CURLcode result;
@@ -121,7 +116,7 @@ int submit_measurements(const char *access_token, const char *json_str)
     struct curl_slist *chunk = NULL;
 
     memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), APP_URL, config.system_uid);
+    snprintf(app_url_buffer, sizeof(app_url_buffer), service_url, config.system_uid);
 
     /* Verification header + Content-Type */
     sprintf(auth_header, "Authorization: Bearer %s", access_token);
@@ -232,7 +227,7 @@ void aqx_client_flush()
     access_token = get_access_token(config.oauth2_refresh_token);
     if (access_token) {
       LOG_DEBUG("received access token: '%s'\n", access_token);
-      submit_measurements(access_token, json_str);
+      submit_measurements(config.service_url, access_token, json_str);
     }
 
     json_object_put(arr); /* free object */
