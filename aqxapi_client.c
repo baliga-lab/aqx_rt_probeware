@@ -23,7 +23,7 @@
 #define AUTH_HEADER_MAXLEN 200
 #define REFRESH_POST_PARAMS_MAXLEN 1024
 #define JSON_BUFFER_SIZE 2048
-#define MAX_MEASUREMENTS 20
+#define MAX_MEASUREMENTS 10
 
 /* Module init configuration */
 static struct aqx_client_options config;

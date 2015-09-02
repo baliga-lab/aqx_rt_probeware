@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -115,15 +116,29 @@ const char *stemp_dict_get(struct stemp_dict *dict, const char *key)
   return NULL;
 }
 
-char *copy_char(char *dest, const char *src, int *i, int *j, int src_size,
-           int *dest_size)
+static char *copy_char(char *dest, const char *src, int *i, int *j, int src_size,
+                       int *dest_size)
 {
-  dest[*j++] = src[*i++];
+  dest[(*j)++] = src[(*i)++];
   if (*j >= *dest_size) {
     /* TODO resize */
   }
   return dest;
 }
+
+static char *replace_expression(struct stemp_dict *dict, char *dest, const char *varname,
+                                int *j, int *dest_size)
+{
+  const char *value = stemp_dict_get(dict, varname);
+  if (value) {
+    /* TODO: we currently will crash, if the replacement will result in
+     a buffer overflow */
+    int i;
+    for (i = 0; i < strlen(value); i++) dest[(*j)++] = value[i];
+  }
+  return dest;
+}
+
 
 char *stemp_apply_template(const char *tpl_str, struct stemp_dict *dict)
 {
@@ -134,16 +149,53 @@ char *stemp_apply_template(const char *tpl_str, struct stemp_dict *dict)
   input_size = strlen(tpl_str);
   output_size = input_size * 2;
   output = malloc(output_size);
+
   if (output) {
     int i = 0, j = 0;
     while (i < input_size) {
       if (tpl_str[i] == '{') {
+
+        /* we found an expression, for now, all we support is
+         simple key value lookups */
         if (i < input_size - 1 && tpl_str[i + 1] == '{') {
-          /* TODO: Replace */
+          int expr_start = i + 2, expr_end = i + 2, terminated = 0, error = 0;
+          /* First find the limits of the expression variable */
+          while (!terminated && !error) {
+            if (expr_end + 1 < input_size) {
+              if (tpl_str[expr_end] == '}' && tpl_str[expr_end + 1] == '}') terminated = 1;
+            } else error = 1;
+            expr_end++;
+          }
+
+          if (terminated) {
+            char *expr;
+            int expr_len;
+            /* expr_end points to last '}' if successful */
+
+            i = expr_end + 1; /* update input pointer */
+            expr_end -= 2;
+            expr_len = expr_end - expr_start + 1;
+            expr = malloc(expr_len);
+            memcpy(expr, &tpl_str[expr_start], expr_len);
+            expr[expr_len] = 0;
+            output = replace_expression(dict, output, expr, &j, &output_size);
+            free(expr); /* don't need it anymore after replace */
+          } else {
+            /*
+             * handle error: we can't produce a reliable result because
+             * the input was garbage, so release the allocated resources and
+             * return NULL
+             */
+            free(output);
+            return NULL;
+          }
+          
         } else {
+          /* Currently we ignore single occurrences of the '{' character */
           output = copy_char(output, tpl_str, &i, &j, input_size, &output_size);
         }
       } else {
+        /* Default behaviour, carry on copying */
         output = copy_char(output, tpl_str, &i, &j, input_size, &output_size);
       }
     }
