@@ -80,6 +80,7 @@ const char *get_access_token(const char *refresh_token)
 
     if (result != CURLE_OK) {
       LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+      /* TODO: connection error - buffer it up */
     } else {
       json_object *obj;
       obj = json_tokener_parse(json_buffer);

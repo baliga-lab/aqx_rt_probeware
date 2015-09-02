@@ -1,5 +1,11 @@
 /*
  * aqxclient.cpp : Defines the entry point for the console application.
+ *
+ * TODO:
+ * - Handling of disconnection errors:
+ *   At the moment disconnected devices are marked at such and excluded from
+ *   measuring. We might want to reconsider reconnecting everything after
+ *   a connection error happens
  */
 #include <stdio.h>
 #include <string.h>
@@ -63,11 +69,13 @@ extern "C" {
 struct goio_device {
   GOIO_SENSOR_HANDLE hDevice;
   char description[100];
+  int connected;
 };
 
 struct ngio_device {
   NGIO_DEVICE_HANDLE hDevice;
   gtype_int32 deviceType;
+  int connected;
 };
 
 int num_goio_devices;
@@ -92,7 +100,7 @@ void GoIO_SendIORequests();
 void GoIO_CollectMeasurements(struct aqx_measurement *measurement);
 
 void NGIO_OpenAllConnectedDevices(NGIO_LIBRARY_HANDLE hNGIOlib);
-void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType);
+gtype_int32 NGIO_SendIORequest(struct ngio_device *device);
 void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement *measurement);
 void NGIO_StopMeasurements(NGIO_DEVICE_HANDLE hDevice);
 
@@ -227,33 +235,33 @@ void measure()
   struct aqx_measurement measurement;
   int any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
   int i, j;
+  gtype_int32 status;
 
   if (any_devices_connected) {
     GoIO_SendIORequests();
     for (j = 0; j < num_ngio_devices; j++) {
-      NGIO_SendIORequest(ngio_devices[j].hDevice, ngio_devices[j].deviceType);
+      if (ngio_devices[j].connected) status = NGIO_SendIORequest(&ngio_devices[j]);
     }
 
     OSSleep(1000); // wait for a second
     GoIO_CollectMeasurements(&measurement);
 
     for (j = 0; j < num_ngio_devices; j++) {
-      NGIO_CollectMeasurements(ngio_devices[j].hDevice, &measurement);
-      NGIO_StopMeasurements(ngio_devices[j].hDevice);
+      if (ngio_devices[j].connected) {
+        NGIO_CollectMeasurements(ngio_devices[j].hDevice, &measurement);
+        NGIO_StopMeasurements(ngio_devices[j].hDevice);
+      }
     }
 #ifndef DONT_SUBMIT_TO_API
     // Register time after all measurements were taken
     time(&measurement.time);
     aqx_add_measurement(&measurement);
 #endif
-
   } else {
     OSSleep(1000); // wait for a second
     LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected);
   }
-
 }
-
 
 int main(int argc, char* argv[])
 {
@@ -321,7 +329,9 @@ int main(int argc, char* argv[])
 
   /* cleanup here */
   GoIO_CloseAllConnectedDevices();
-  for (i = 0; i < num_ngio_devices; i++) NGIO_Device_Close(ngio_devices[i].hDevice);
+  for (i = 0; i < num_ngio_devices; i++) {
+    if (ngio_devices[i].hDevice) NGIO_Device_Close(ngio_devices[i].hDevice);
+  }
 
   cleanup_system(hNGIOlib);
 	return 0;
@@ -374,6 +384,7 @@ void GoIO_GetConnectedDevices(gtype_int32 productId)
 
       printf("Successfully opened '%s' device '%s' (%s), sensor %d\n", goio_deviceDesc[productId],
              deviceName, device->description, charId);
+      device->connected = 1;
       num_goio_devices++;
     }
 	}
@@ -392,21 +403,42 @@ void GoIO_CloseAllConnectedDevices()
 {
   int i;
   for (i = 0; i < num_goio_devices; i++) {
-    GoIO_Sensor_Close(goio_devices[i].hDevice);
+    if (goio_devices[i].hDevice) GoIO_Sensor_Close(goio_devices[i].hDevice);
   }
 }
 
-/* Step 1: Send IO request */
-void GoIO_SendIORequest(GOIO_SENSOR_HANDLE hDevice)
+/*
+  Step 1: Send IO request
+  This will return 0 on success, and -1 on error
+*/
+gtype_int32 GoIO_SendIORequest(GOIO_SENSOR_HANDLE hDevice)
 {
-  GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT);//40 milliseconds measurement period.
-  GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
+  GoIO_Sensor_SetMeasurementPeriod(hDevice, 0.040, SKIP_TIMEOUT_MS_DEFAULT); //40 milliseconds measurement period.
+  return GoIO_Sensor_SendCmdAndGetResponse(hDevice, SKIP_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, SKIP_TIMEOUT_MS_DEFAULT);
 }
 
 void GoIO_SendIORequests()
 {
+  gtype_int32 retval;
+  unsigned char lastCmd, lastCmdStatus, lastCmdWithErrorRespSentOvertheWire, lastErrorSentOvertheWire;
   int i;
-  for (i = 0; i < num_goio_devices; i++) GoIO_SendIORequest(goio_devices[i].hDevice);
+  for (i = 0; i < num_goio_devices; i++) {
+    if (goio_devices[i].connected) {
+      retval = GoIO_SendIORequest(goio_devices[i].hDevice);
+      if (retval) {
+        retval = GoIO_Sensor_GetLastCmdResponseStatus(goio_devices[i].hDevice,
+                                                      &lastCmd, &lastCmdStatus,
+                                                      &lastCmdWithErrorRespSentOvertheWire,
+                                                      &lastErrorSentOvertheWire);
+        /* there was an error !!!!
+           For now, we mark the sensor as disconnected and ignore measurements from there */
+        LOG_DEBUG("connection error, disconnected GOIO: '%s'\n", goio_devices[i].description);
+        goio_devices[i].connected = 0;
+        GoIO_Sensor_Close(goio_devices[i].hDevice);
+        goio_devices[i].hDevice = NULL;
+      }
+    }
+  }
 }
 
 /* Step 2: Collect, aggregate and convert measurments */
@@ -445,14 +477,16 @@ void GoIO_CollectMeasurements(struct aqx_measurement *measurement)
 {
   int i;
   for (i = 0; i < num_goio_devices; i++) {
-    double value = GoIO_CollectMeasurement(goio_devices[i].hDevice);
-    LOG_DEBUG("sensor '%s' = %f\n", goio_devices[i].description, value);
-    if (IS_PH(goio_devices[i].description)) measurement->ph = value;
-    else if (IS_NH4(goio_devices[i].description)) measurement->ammonium = value;
-    else if (IS_NO3(goio_devices[i].description)) measurement->nitrate = value;
-    else if (IS_DO(goio_devices[i].description)) measurement->o2 = value;
-    else if (IS_TEMPERATURE(goio_devices[i].description)) measurement->temperature = value;
-    else LOG_DEBUG("sensor '%s' not yet supported for GoIO\n", goio_devices[i].description);
+    if (goio_devices[i].connected) {
+      double value = GoIO_CollectMeasurement(goio_devices[i].hDevice);
+      LOG_DEBUG("sensor '%s' = %f\n", goio_devices[i].description, value);
+      if (IS_PH(goio_devices[i].description)) measurement->ph = value;
+      else if (IS_NH4(goio_devices[i].description)) measurement->ammonium = value;
+      else if (IS_NO3(goio_devices[i].description)) measurement->nitrate = value;
+      else if (IS_DO(goio_devices[i].description)) measurement->o2 = value;
+      else if (IS_TEMPERATURE(goio_devices[i].description)) measurement->temperature = value;
+      else LOG_DEBUG("sensor '%s' not yet supported for GoIO\n", goio_devices[i].description);
+    }
   }
 }
 
@@ -481,8 +515,8 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
     if (!status) {
       device->hDevice = NGIO_Device_Open(hNGIOlib, deviceName, 0);
       if (device->hDevice) {
-        LOG_DEBUG("successfully opened NGIO device, type: %d, handle: %d\n",
-                  device->deviceType, device->hDevice);
+        LOG_DEBUG("successfully opened NGIO device, type: %d\n", device->deviceType);
+        device->connected = 1;
         num_ngio_devices++;
       }
     }
@@ -501,12 +535,13 @@ void NGIO_OpenAllConnectedDevices(NGIO_LIBRARY_HANDLE hNGIOlib)
   LOG_DEBUG("# NGIO devices: %d\n", num_ngio_devices);
 }
 
-void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
+gtype_int32 NGIO_SendIORequest(struct ngio_device *device)
 {
 	NGIOGetStatusCmdResponsePayload getStatusResponse;
 	NGIO_NVMEM_CHANNEL_ID1_rec getNVMemResponse;
 	gtype_uint32 nRespBytes;
-  gtype_int32 status = 0;
+  gtype_int32 status = 0, deviceType = device->deviceType;
+  NGIO_DEVICE_HANDLE hDevice = device->hDevice;
 
   if ((NGIO_DEVTYPE_LABQUEST == deviceType) || (NGIO_DEVTYPE_LABQUEST2 == deviceType)) {
 #if !(defined(TARGET_PLATFORM_LABQUEST) || defined(TARGET_PLATFORM_LABQUEST2))
@@ -587,6 +622,13 @@ void NGIO_SendIORequest(NGIO_DEVICE_HANDLE hDevice, gtype_uint32 deviceType)
       NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_START_MEASUREMENTS, NULL, 0, NULL, NULL, NGIO_TIMEOUT_MS_DEFAULT);
     }
   }
+  if (status) {
+    LOG_DEBUG("connection error, disconnected NGIO device\n");
+    device->connected = 0;
+    NGIO_Device_Close(device->hDevice);
+    device->hDevice = NULL;
+  }
+  return status;
 }
 
 void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement *measurement)
