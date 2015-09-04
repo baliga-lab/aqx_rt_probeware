@@ -52,8 +52,7 @@ int main(int argc, char **argv)
   chibi_suite_add_test(suite, Test_apply_template_nochange);
   chibi_suite_add_test(suite, Test_apply_template_simple_replace);
 
-  chibi_suite_run_tap(suite);
-  chibi_suite_summary_data(suite, &summary);
+  chibi_suite_run_tap(suite, &summary);
   chibi_suite_delete(suite);
   return summary.num_failures;
 }

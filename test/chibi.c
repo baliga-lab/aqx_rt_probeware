@@ -15,6 +15,8 @@ chibi_suite *chibi_suite_new_fixture(chibi_fixfunc setup,
   result->setup = setup;
   result->teardown = teardown;
   result->userdata = userdata;
+  result->first_child = NULL;
+  result->next = NULL;
   return result;
 }
 
@@ -33,7 +35,20 @@ void chibi_suite_delete(chibi_suite *suite)
       free(tc);
       tc = tmp;
     }
+    /* recursively free the children and siblings */
+    if (suite->first_child) chibi_suite_delete(suite->first_child);
+    if (suite->next) chibi_suite_delete(suite->next);
     free(suite);
+  }
+}
+
+void chibi_suite_add_suite(chibi_suite *suite, chibi_suite *toadd)
+{
+  if (!suite->first_child) suite->first_child = toadd;
+  else {
+    chibi_suite *cur = suite->first_child;
+    while (cur->next) cur = cur->next;
+    cur->next = toadd;
   }
 }
 
@@ -56,46 +71,15 @@ void _chibi_suite_add_test(chibi_suite *suite, chibi_testfunc fun, const char *f
   }
 }
 
-void chibi_suite_summary(chibi_suite *suite)
-{
-  int num_tests = 0, num_failures = 0, i = 1;
-  chibi_testcase *tc = suite->head;
-
-  /* First pass: counting */
-  while (tc) {
-    num_tests++;
-    if (!tc->success) {
-      num_failures++;
-    }
-    tc = tc->next;
-  }
-
-  fprintf(stderr, "\n\nSummary\n");
-  fprintf(stderr, "-------\n");
-
-  /* Second pass: messages */
-  if (num_failures > 0) {
-    fprintf(stderr, "# of failures: %d\n\n", num_failures);
-    tc = suite->head;
-    while (tc) {
-      if (!tc->success) {
-        fprintf(stderr, "%d. %s\n", i, tc->error_msg);
-        i++;
-      }
-      tc = tc->next;
-    }
-    fprintf(stderr, "\n");
-  }
-  fprintf(stderr, "Runs: %d Pass: %d Fail: %d\n\n", num_tests, num_tests - num_failures, num_failures);
-}
-
-void chibi_suite_summary_data(chibi_suite *suite, chibi_summary_data *summary)
+static void _chibi_suite_summary_data(chibi_suite *suite, chibi_summary_data *summary, int level)
 {
   if (suite && summary) {
     chibi_testcase *tc = suite->head;
-
-    summary->num_runs = 0;
-    summary->num_failures = 0;
+    if (!level) {
+      summary->num_runs = 0;
+      summary->num_failures = 0;
+      summary->num_pass = 0;
+    }
 
     while (tc) {
       summary->num_runs++;
@@ -104,8 +88,43 @@ void chibi_suite_summary_data(chibi_suite *suite, chibi_summary_data *summary)
       }
       tc = tc->next;
     }
-    summary->num_pass = summary->num_runs - summary->num_failures;
+    if (suite->first_child) _chibi_suite_summary_data(suite->first_child, summary, level + 1);
+    if (suite->next) _chibi_suite_summary_data(suite->next, summary, level + 1);
+
+    if (!level) summary->num_pass = summary->num_runs - summary->num_failures;
   }
+}
+
+static int _print_messages(chibi_suite *suite, int testnum)
+{
+  chibi_testcase *tc = suite->head;
+  while (tc) {
+    if (!tc->success) {
+      fprintf(stderr, "%d. %s\n", testnum, tc->error_msg);
+      testnum++;
+    }
+    tc = tc->next;
+  }
+  if (suite->first_child) testnum = _print_messages(suite->first_child, testnum);
+  if (suite->next) testnum = _print_messages(suite->next, testnum);
+
+  return testnum;
+}
+
+static void chibi_suite_print_summary(chibi_suite *suite)
+{
+  chibi_summary_data summary;
+  _chibi_suite_summary_data(suite, &summary, 0);
+
+  fprintf(stderr, "\n\nSummary\n");
+  fprintf(stderr, "-------\n");
+  if (summary.num_failures > 0) {
+    fprintf(stderr, "# of failures: %d\n\n", summary.num_failures);
+    _print_messages(suite, 0);
+    fprintf(stderr, "\n");
+  }
+  fprintf(stderr, "Runs: %d Pass: %d Fail: %d\n\n", summary.num_runs,
+          summary.num_runs - summary.num_failures, summary.num_failures);
 }
 
 /*
@@ -128,7 +147,6 @@ static char *assemble_message2(const char *msg1, const char *msg2,
   sprintf(msgbuffer, "%s:%d - %s() - %s %s", srcfile, line, funname, msg1, msg2);
   return msgbuffer;
 }
-
 
 /**********************************************************************
  *
@@ -203,7 +221,6 @@ void _chibi_assert_eq_cstr(chibi_testcase *tc, const char *expected, const char 
   }
 }
 
-
 /**********************************************************************
  *
  * TEST RUNNERS
@@ -219,40 +236,57 @@ void _chibi_assert_eq_cstr(chibi_testcase *tc, const char *expected, const char 
  * different output protocols (e.g. for reporting the success/failure of
  * tests while they are run).
  */
-static void _chibi_suite_run(chibi_suite *suite, void (*report_num_tests)(int),
-                             void (*report_success)(int, chibi_testcase *),
-                             void (*report_fail)(int, chibi_testcase *))
+static int _count_tests(chibi_suite *suite) {
+  chibi_testcase *testcase = suite->head;
+  int result = 0;
+  if (suite->first_child) result += _count_tests(suite->first_child);
+  if (suite->next) result += _count_tests(suite->next);
+  while (testcase) {
+    result++;
+    testcase = testcase->next;
+  }
+  return result;
+}
+
+static int _chibi_suite_run(chibi_suite *suite, void (*report_num_tests)(int),
+                            void (*report_success)(int, chibi_testcase *),
+                            void (*report_fail)(int, chibi_testcase *),
+                            int tcnum, int level)
 {
   if (suite) {
-    chibi_testcase *testcase = suite->head;
-    int num_tests = 0, i = 0;
+    chibi_testcase *testcase;
 
-    if (suite->setup) suite->setup(suite->userdata);
-
-    /* count the tests */
-    while (testcase) {
-      num_tests++;
-      testcase = testcase->next;
+    if (suite->first_child) {
+      tcnum = _chibi_suite_run(suite->first_child, report_num_tests,
+                               report_success, report_fail, tcnum, level + 1);
     }
-    report_num_tests(num_tests);
+    if (suite->next) {
+      tcnum = _chibi_suite_run(suite->next, report_num_tests,
+                               report_success, report_fail, tcnum, level + 1);
+    }
 
-    /* rewind and run */
+    /* only report the number of tests at the top level */
+    if (level == 0) report_num_tests(_count_tests(suite));
+
+    /* run this level's tests */
     testcase = suite->head;
     while (testcase) {
 #ifndef AMIGA
       if (!setjmp(testcase->env)) {
 #endif
+        if (suite->setup) suite->setup(suite->userdata);    
         testcase->fun(testcase);
+        if (suite->teardown) suite->teardown(suite->userdata);
 #ifndef AMIGA
       }
 #endif
-      if (testcase->success) report_success(i, testcase);
-      else report_fail(i, testcase);
+      if (testcase->success) report_success(tcnum, testcase);
+      else report_fail(tcnum, testcase);
       testcase = testcase->next;
-      i++;
+      tcnum++;
     }
-    if (suite->teardown) suite->teardown(suite->userdata);
   }
+  return tcnum;
 }
 
 /*
@@ -264,14 +298,17 @@ static void report_fail_silent(int testnum, chibi_testcase *testcase) { }
 static void report_success_std(int testnum, chibi_testcase *testcase) { fprintf(stderr, "."); }
 static void report_fail_std(int testnum, chibi_testcase *testcase) { fprintf(stderr, "F"); }
 
-void chibi_suite_run(chibi_suite *suite)
+void chibi_suite_run(chibi_suite *suite, chibi_summary_data *summary)
 {
-  _chibi_suite_run(suite, report_num_tests_silent, report_success_std, report_fail_std);
+  _chibi_suite_run(suite, report_num_tests_silent, report_success_std, report_fail_std, 0, 0);
+  if (summary) _chibi_suite_summary_data(suite, summary, 0);
+  chibi_suite_print_summary(suite);
 }
 
-void chibi_suite_run_silently(chibi_suite *suite)
+void chibi_suite_run_silently(chibi_suite *suite, chibi_summary_data *summary)
 {
-  _chibi_suite_run(suite, report_num_tests_silent, report_success_silent, report_fail_silent);
+  _chibi_suite_run(suite, report_num_tests_silent, report_success_silent, report_fail_silent, 0, 0);
+  if (summary) _chibi_suite_summary_data(suite, summary, 0);
 }
 
 /*
@@ -287,7 +324,8 @@ static void report_fail_tap(int testnum, chibi_testcase *testcase)
   fprintf(stdout, "not ok %d - %s\n", testnum + 1, testcase->fname);
 }
 
-void chibi_suite_run_tap(chibi_suite *suite)
+void chibi_suite_run_tap(chibi_suite *suite, chibi_summary_data *summary)
 {
-  _chibi_suite_run(suite, report_num_tests_tap, report_success_tap, report_fail_tap);  
+  _chibi_suite_run(suite, report_num_tests_tap, report_success_tap, report_fail_tap, 0, 0);
+  if (summary) _chibi_suite_summary_data(suite, summary, 0);
 }
