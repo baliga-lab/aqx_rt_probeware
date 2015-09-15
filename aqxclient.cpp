@@ -45,6 +45,7 @@ extern "C" {
 
 /* TODO: This is actually a feature of the measuring component */
 #define SECONDS_PER_SAMPLE 1
+#define GIT_SHA ("$Id$")
 
 #include "GoIO_DLL_interface.h"
 #include "NGIO_lib_interface.h"
