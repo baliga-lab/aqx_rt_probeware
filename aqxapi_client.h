@@ -13,14 +13,28 @@ struct aqx_measurement {
   double temperature, ph, o2, nitrate, ammonium, light;
 };
 
+struct aqx_system_info {
+  char *uid;
+  char *name;
+};
+
+struct aqx_system_entries {
+  int num_entries;
+  struct aqx_system_info *entries;
+};
+
 struct aqx_client_options {
-  const char *service_url; /* the service's URL */
+  const char *add_measurements_url; /* the service's URL */
+  const char *get_systems_url; /* the service's URL */
   const char *system_uid; /* System's UID */
   const char *oauth2_refresh_token; /* OAuth2 refresh token from Google */
   unsigned int send_interval_secs; /* send update every x seconds */
 };
 
 extern int aqx_client_init(struct aqx_client_options *options);
+extern struct aqx_system_entries *aqx_get_systems();
+extern void aqx_free_systems(struct aqx_system_entries *entries);
+
 extern int aqx_add_measurement(struct aqx_measurement *m);
 /* force send everything available */
 extern void aqx_client_flush();

@@ -37,7 +37,8 @@ extern "C" {
 
 #include <microhttpd.h>
 
-#define SERVICE_URL_PREFIX   "service_url="
+#define MEASUREMENTS_URL_PREFIX   "measurements_url="
+#define SYSTEMS_URL_PREFIX   "systems_url="
 #define REFRESH_TOKEN_PREFIX "refresh_token="
 #define SYSTEM_UID_PREFIX    "system_uid="
 #define SEND_INTERVAL_PREFIX "send_interval_secs="
@@ -159,7 +160,8 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
 
 struct aqxclient_config {
   int service_port;
-  char service_url[200];
+  char measurements_url[200];
+  char systems_url[200];
   char system_uid[48];
   char refresh_token[100];
   int send_interval_secs;
@@ -177,8 +179,12 @@ void parse_config_line(struct aqxclient_config *cfg, char *line)
   }
 
   /* extract configuration settings */
-  if (!strncmp(line, SERVICE_URL_PREFIX, strlen(SERVICE_URL_PREFIX))) {
-    strncpy(cfg->service_url, &line[strlen(SERVICE_URL_PREFIX)], sizeof(cfg->service_url));
+  if (!strncmp(line, MEASUREMENTS_URL_PREFIX, strlen(MEASUREMENTS_URL_PREFIX))) {
+    strncpy(cfg->measurements_url, &line[strlen(MEASUREMENTS_URL_PREFIX)],
+            sizeof(cfg->measurements_url));
+  } else if (!strncmp(line, SYSTEMS_URL_PREFIX, strlen(SYSTEMS_URL_PREFIX))) {
+    strncpy(cfg->systems_url, &line[strlen(SYSTEMS_URL_PREFIX)],
+            sizeof(cfg->systems_url));
   } else if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
     strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
   } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
@@ -202,8 +208,9 @@ static struct aqxclient_config *read_config(struct aqxclient_config *cfg)
     while (fgets(line_buffer, sizeof(line_buffer), fp)) {
       parse_config_line(cfg, line_buffer);
     }
-    LOG_DEBUG("service url: '%s', system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
-              cfg->service_url, cfg->system_uid, cfg->refresh_token, cfg->send_interval_secs);
+    LOG_DEBUG("measurements url: '%s', systems url: '%s' system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
+              cfg->measurements_url, cfg->systems_url, cfg->system_uid, cfg->refresh_token,
+              cfg->send_interval_secs);
     fclose(fp);
   }
   return cfg;
@@ -216,7 +223,8 @@ NGIO_LIBRARY_HANDLE init_system()
   NGIO_LIBRARY_HANDLE hNGIOlib;
   struct aqxclient_config *cfg = read_config(&client_config);
 
-  aqx_options.service_url = cfg->service_url;
+  aqx_options.add_measurements_url = cfg->measurements_url;
+  aqx_options.get_systems_url = cfg->systems_url;
   aqx_options.system_uid = cfg->system_uid;
   aqx_options.oauth2_refresh_token = cfg->refresh_token;
   aqx_options.send_interval_secs = cfg->send_interval_secs;
@@ -275,6 +283,7 @@ void measure()
 
 int main(int argc, char* argv[])
 {
+  struct aqx_system_entries *entries;
   struct MHD_Daemon *daemon;
   int i;
 
@@ -317,6 +326,9 @@ int main(int argc, char* argv[])
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 #endif
+
+  entries = aqx_get_systems();
+  aqx_free_systems(entries);
 
   if (daemon) {
     LOG_DEBUG("HTTP daemon started...");

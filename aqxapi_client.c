@@ -43,7 +43,7 @@ static char json_buffer[JSON_BUFFER_SIZE];
 /*
  * Callback function for the access token retrieval function.
  */
-size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
+static size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
   size_t num_bytes = size * nmemb;
 
@@ -55,12 +55,15 @@ size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
   return num_bytes;
 }
 
+/*************************************************************************************
+ * get_access_token()
+ *************************************************************************************/
 /*
   Given the refresh token, retrieve a new access token from the Google token service
   endpoint.
   Currently, this only checks the 'access_token' field of the response JSON object.
 */
-const char *get_access_token(const char *refresh_token)
+static const char *get_access_token(const char *refresh_token)
 {
   CURL *curl;
   CURLcode result;
@@ -105,7 +108,11 @@ const char *get_access_token(const char *refresh_token)
   return retval;
 }
 
-int submit_measurements(const char *service_url, const char *access_token, const char *json_str)
+/*************************************************************************************
+ * submit_measurements()
+ *************************************************************************************/
+static int submit_measurements(const char *service_url, const char *access_token,
+                               const char *json_str)
 {
   CURL *curl;
   CURLcode result;
@@ -162,7 +169,7 @@ int submit_measurements(const char *service_url, const char *access_token, const
 }
 
 /* serialize a measurement struct into a json_object */
-json_object *to_json(struct aqx_measurement *m)
+static json_object *to_json(struct aqx_measurement *m)
 {
   static char time_buffer[20];
   struct json_object *obj = json_object_new_object();
@@ -192,6 +199,104 @@ static struct json_object *serialize_measurements()
     json_object_array_add(arr, to_json(&measurement_data[i]));
   }
   return arr;
+}
+
+/*************************************************************************************
+ * get_systems()
+ *
+ *  {
+ *    "systems": [
+ *      {
+ *        "name": "System 001",
+ *        "uid": "aa56fa203bcb11e58c8864273763ec8b"
+ *      },
+ *      ...
+ *    ]
+ *  }
+ *
+ *************************************************************************************/
+
+static struct aqx_system_entries *get_systems(const char *service_url, const char *access_token)
+{
+  CURL *curl;
+  CURLcode result;
+  int retval = 0;
+  static char app_url_buffer[200];
+  struct aqx_system_entries *entries;
+
+  curl = curl_easy_init();
+  if (curl) {
+    struct curl_slist *chunk = NULL;
+
+    memset(json_buffer, 0, sizeof(json_buffer));
+    snprintf(app_url_buffer, sizeof(app_url_buffer), service_url, config.system_uid);
+
+    /* Verification header + Content-Type */
+    sprintf(auth_header, "Authorization: Bearer %s", access_token);
+    chunk = curl_slist_append(chunk, auth_header);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+
+    curl_easy_setopt(curl, CURLOPT_URL, app_url_buffer);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
+
+#ifdef SKIP_PEER_VERIFICATION
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+#endif
+    result = curl_easy_perform(curl);
+
+    if (result != CURLE_OK) {
+      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+      /* TODO: Handle submit error
+         maybe retry ? After that, store in a file */
+    } else {
+      json_object *obj, *system_list, *system, *s;
+      const char *uid, *name;
+      int i;
+
+      obj = json_tokener_parse(json_buffer);
+      json_count = 0;
+      if (json_object_is_type(obj, json_type_object)) {
+        LOG_DEBUG("Yes !!!\n");
+        if (json_object_object_get_ex(obj, "systems", &system_list)) {
+          int len = json_object_array_length(system_list), slen;
+          if (len) {
+            entries = malloc(sizeof(struct aqx_system_entries));
+            entries->num_entries = len;
+            entries->entries = malloc(sizeof(struct aqx_system_info) * len);
+
+            LOG_DEBUG("Number of systems: %d\n", len);
+            for (i = 0; i < len; i++) {
+              system = json_object_array_get_idx(system_list, i);
+              json_object_object_get_ex(system, "uid", &s);
+              uid = json_object_get_string(s);
+              slen = strlen(uid);
+              entries->entries[i].uid = malloc(slen + 1);
+              strcpy(entries->entries[i].uid, uid);
+              entries->entries[i].uid[slen] = 0;
+
+              json_object_object_get_ex(system, "name", &s);
+              name = json_object_get_string(s);
+              slen = strlen(name);
+              entries->entries[i].name = malloc(slen + 1);
+              strcpy(entries->entries[i].name, name);
+              entries->entries[i].name[slen] = 0;
+
+              LOG_DEBUG("System UID: '%s', Name: '%s'\n",
+                        entries->entries[i].uid, entries->entries[i].name);
+            }
+          }
+        }
+      }
+      /* Free the memory */
+      json_object_put(obj);
+    }
+
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(chunk);
+  }
+  return entries;
 }
 
 /***************************************************************************
@@ -228,7 +333,7 @@ void aqx_client_flush()
     access_token = get_access_token(config.oauth2_refresh_token);
     if (access_token) {
       LOG_DEBUG("received access token: '%s'\n", access_token);
-      submit_measurements(config.service_url, access_token, json_str);
+      submit_measurements(config.add_measurements_url, access_token, json_str);
     }
 
     json_object_put(arr); /* free object */
@@ -250,4 +355,30 @@ int aqx_add_measurement(struct aqx_measurement *m)
     aqx_client_flush();
   }
   return 1;
+}
+
+struct aqx_system_entries *aqx_get_systems()
+{
+  const char *access_token = get_access_token(config.oauth2_refresh_token);
+  if (access_token) {
+    LOG_DEBUG("received access token: '%s'\n", access_token);
+    return get_systems(config.get_systems_url, access_token);
+  }
+  return NULL;
+}
+
+/*
+ * Make sure we get rid of all reserved memory allocated by aqx_get_systems()
+ */
+void aqx_free_systems(struct aqx_system_entries *entries)
+{
+  if (entries) {
+    int i = 0;
+    for (i = 0; i < entries->num_entries; i++) {
+      free(entries->entries[i].uid);
+      free(entries->entries[i].name);
+    }
+    free(entries->entries);
+    free(entries);
+  }
 }

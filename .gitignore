@@ -18,3 +18,4 @@ test-driver
 *.log
 *.trs
 INSTALL
+vernier_client
