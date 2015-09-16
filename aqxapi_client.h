@@ -26,6 +26,10 @@ extern int aqx_add_measurement(struct aqx_measurement *m);
 extern void aqx_client_flush();
 extern void aqx_client_cleanup();
 
+#ifdef DEBUG
 #define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#else 
+#define LOG_DEBUG(...)
+#endif
 
 #endif /* __AQXAPI_CLIENT_H__ */

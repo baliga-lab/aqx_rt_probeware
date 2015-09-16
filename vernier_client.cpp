@@ -36,7 +36,12 @@ extern "C" {
 }
 
 #include <microhttpd.h>
-#define HTTP_PORT 8080
+
+#define SERVICE_URL_PREFIX   "service_url="
+#define REFRESH_TOKEN_PREFIX "refresh_token="
+#define SYSTEM_UID_PREFIX    "system_uid="
+#define SEND_INTERVAL_PREFIX "send_interval_secs="
+#define SERVICE_PORT_PREFIX  "service_port="
 
 #define MAX_NUM_MEASUREMENTS 100
 
@@ -124,7 +129,7 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
 {
   struct MHD_Response *response;
   FILE *fp;
-  int ret, fd;
+  int ret = 0;
   const char *filepath;
 
   LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
@@ -153,12 +158,14 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
 
 
 struct aqxclient_config {
+  int service_port;
   char service_url[200];
   char system_uid[48];
   char refresh_token[100];
   int send_interval_secs;
 };
 
+static struct aqxclient_config client_config;
 
 void parse_config_line(struct aqxclient_config *cfg, char *line)
 {
@@ -170,34 +177,36 @@ void parse_config_line(struct aqxclient_config *cfg, char *line)
   }
 
   /* extract configuration settings */
-  if (!strncmp(line, "service_url=", strlen("service_url="))) {
-    strncpy(cfg->service_url, &line[strlen("service_url=")], sizeof(cfg->service_url));
-  } else if (!strncmp(line, "system_uid=", strlen("system_uid="))) {
-    strncpy(cfg->system_uid, &line[strlen("system_uid=")], sizeof(cfg->system_uid));
-  } else if (!strncmp(line, "refresh_token=", strlen("refresh_token="))) {
-    strncpy(cfg->refresh_token, &line[strlen("refresh_token=")], sizeof(cfg->refresh_token));
-  } else if (!strncmp(line, "send_interval_secs=", strlen("send_interval_secs="))) {
-    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen("send_interval_secs=")]);
-    cfg->send_interval_secs = atoi(&line[strlen("send_interval_secs=")]);
+  if (!strncmp(line, SERVICE_URL_PREFIX, strlen(SERVICE_URL_PREFIX))) {
+    strncpy(cfg->service_url, &line[strlen(SERVICE_URL_PREFIX)], sizeof(cfg->service_url));
+  } else if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
+    strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
+  } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
+    strncpy(cfg->refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)], sizeof(cfg->refresh_token));
+  } else if (!strncmp(line, SEND_INTERVAL_PREFIX, strlen(SEND_INTERVAL_PREFIX))) {
+    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SEND_INTERVAL_PREFIX)]);
+    cfg->send_interval_secs = atoi(&line[strlen(SEND_INTERVAL_PREFIX)]);
+  } else if (!strncmp(line, SERVICE_PORT_PREFIX, strlen(SERVICE_PORT_PREFIX))) {
+    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SERVICE_PORT_PREFIX)]);
+    cfg->service_port = atoi(&line[strlen(SERVICE_PORT_PREFIX)]);
   }
 }
 
-static struct aqxclient_config *read_config()
+static struct aqxclient_config *read_config(struct aqxclient_config *cfg)
 {
   FILE *fp = fopen("config.ini", "r");
-  static char line_buffer[200], *s;
-  static struct aqxclient_config cfg;
+  static char line_buffer[200];
 
   if (fp) {
     LOG_DEBUG("configuration file opened\n");
     while (fgets(line_buffer, sizeof(line_buffer), fp)) {
-      parse_config_line(&cfg, line_buffer);
+      parse_config_line(cfg, line_buffer);
     }
     LOG_DEBUG("service url: '%s', system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
-              cfg.service_url, cfg.system_uid, cfg.refresh_token, cfg.send_interval_secs);
+              cfg->service_url, cfg->system_uid, cfg->refresh_token, cfg->send_interval_secs);
     fclose(fp);
   }
-  return &cfg;
+  return cfg;
 }
 
 NGIO_LIBRARY_HANDLE init_system()
@@ -205,7 +214,7 @@ NGIO_LIBRARY_HANDLE init_system()
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
   struct aqx_client_options aqx_options;
   NGIO_LIBRARY_HANDLE hNGIOlib;
-  struct aqxclient_config *cfg = read_config();
+  struct aqxclient_config *cfg = read_config(&client_config);
 
   aqx_options.service_url = cfg->service_url;
   aqx_options.system_uid = cfg->system_uid;
@@ -235,7 +244,7 @@ void measure()
 {
   struct aqx_measurement measurement;
   int any_devices_connected = num_goio_devices > 0 || num_ngio_devices > 0;
-  int i, j;
+  int j;
   gtype_int32 status;
 
   if (any_devices_connected) {
@@ -260,14 +269,13 @@ void measure()
 #endif
   } else {
     OSSleep(1000); // wait for a second
-    LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected);
+    /* LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected); */
   }
 }
 
 int main(int argc, char* argv[])
 {
   struct MHD_Daemon *daemon;
-  struct stemp_dict *dict;
   int i;
 
 #ifdef HAS_SIGACTION
@@ -285,7 +293,7 @@ int main(int argc, char* argv[])
 
 
   LOG_DEBUG("starting the HTTP daemon...");
-  daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, HTTP_PORT, NULL, NULL,
+  daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
 
   /*
@@ -362,9 +370,7 @@ void OSSleep(
  **********************************************************************/
 void GoIO_GetConnectedDevices(gtype_int32 productId)
 {
-  int numDevices;
-	gtype_int32 vendorId;
-  gtype_int32 i;
+  gtype_int32 i, numDevices;
   struct goio_device *device = &goio_devices[num_goio_devices];
 	char deviceName[GOIO_MAX_SIZE_DEVICE_NAME];
 
@@ -372,7 +378,6 @@ void GoIO_GetConnectedDevices(gtype_int32 productId)
   for (i = 0; i < numDevices; i++) {
 		GoIO_GetNthAvailableDeviceName(deviceName, GOIO_MAX_SIZE_DEVICE_NAME,
                                    VERNIER_DEFAULT_VENDOR_ID, productId, i);
-		vendorId = VERNIER_DEFAULT_VENDOR_ID;
     device->hDevice = GoIO_Sensor_Open(deviceName, VERNIER_DEFAULT_VENDOR_ID,
                                        productId, 0);
     if (device->hDevice) {
@@ -499,10 +504,9 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
 {
 	char deviceName[NGIO_MAX_SIZE_DEVICE_NAME];
 	NGIO_DEVICE_LIST_HANDLE hDeviceList;
-	gtype_uint32 sig, mask, numDevices;
+	gtype_uint32 sig, mask, numDevices, i;
 	gtype_int32 status = 0;
   struct ngio_device *device;
-  int i;
 
   NGIO_SearchForDevices(hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
   hDeviceList = NGIO_OpenDeviceListSnapshot(hNGIOlib, deviceType, &numDevices, &sig);

@@ -1,17 +1,15 @@
 TESTS = test/alltests
 
-AM_CFLAGS   = -g -Wall
-
-AM_CPPFLAGS = -DTARGET_OS_LINUX $(GOIO_CFLAGS) $(NGIO_CFLAGS)
+AM_CPPFLAGS = -g -Wall -DDEBUG -DTARGET_OS_LINUX $(GOIO_CFLAGS) $(NGIO_CFLAGS)
 
 LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
               $(top_srcdir)/tap-driver.sh
 
-bin_PROGRAMS = aqxclient
+bin_PROGRAMS = vernier_client
 
-aqxclient_SOURCES = 	aqxclient.cpp aqxapi_client.c simple_templates.c
+vernier_client_SOURCES = 	vernier_client.cpp aqxapi_client.c simple_templates.c
 
-aqxclient_LDADD   = $(GOIO_LIBS) $(NGIO_LIBS) -lmicrohttpd -lcurl -ljson-c
+vernier_client_LDADD   = $(GOIO_LIBS) $(NGIO_LIBS) -lmicrohttpd -lcurl -ljson-c
 
 check_PROGRAMS = $(TESTS)
 
