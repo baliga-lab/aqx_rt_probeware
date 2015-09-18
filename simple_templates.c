@@ -16,21 +16,16 @@ unsigned long djb2_hash(const unsigned char *str)
 
 struct stemp_dict *stemp_new_dict()
 {
-  struct stemp_dict *result;
-  size_t table_size = sizeof(struct stemp_htable_entry *) * INITIAL_NUM_HASH_ENTRIES;
-
-  result = malloc(sizeof(struct stemp_dict));
+  struct stemp_dict *result = calloc(1, sizeof(struct stemp_dict));
   if (!result) return NULL;
   result->size = INITIAL_NUM_HASH_ENTRIES;
   result->num_entries = 0;
-  result->entries = malloc(table_size);
+  result->entries = calloc(INITIAL_NUM_HASH_ENTRIES, sizeof(struct stemp_htable_entry *));
 
   if (!result->entries) {
     free(result);
     return NULL;
   }
-  /* initialize */
-  memset(result->entries, 0, table_size);
   return result;
 }
 
@@ -46,7 +41,13 @@ void stemp_free_dict(struct stemp_dict *dict)
       if (slot) {
         cur = slot;
         while (cur) {
-          if (slot->value) free(slot->value);
+          if (slot->value.value_type == STHT_CSTR && slot->value.cstr_value) {
+            free(slot->value.cstr_value);
+          }
+          if (slot->value.value_type == STHT_PTR && slot->value.ptr_value) {
+            free(slot->value.ptr_value);
+          }
+
           next = cur->next;
           free(cur);
           cur = next;
@@ -73,20 +74,19 @@ const char *stemp_dict_put(struct stemp_dict *dict, const char *key, const char 
   if (!dict || dict->size == 0) return NULL;
   slot = djb2_hash((const unsigned char *) key) % dict->size;
 
-  new_entry = malloc(sizeof(struct stemp_htable_entry));
+  new_entry = calloc(1, sizeof(struct stemp_htable_entry));
   if (!new_entry) return NULL;
 
-  memset(new_entry->key, 0, STEMP_MAX_KEY_LENGTH);
-  new_entry->next = NULL;
   strncpy(new_entry->key, key, STEMP_MAX_KEY_LENGTH);
 
   /* reserve space for value and copy */
-  new_entry->value = malloc(strlen(value));
-  if (!new_entry->value) {
+  new_entry->value.value_type = STHT_CSTR;
+  new_entry->value.cstr_value = calloc(strlen(value) + 1, sizeof(char));
+  if (!new_entry->value.cstr_value) {
     free(new_entry);
     return NULL;
   }
-  strcpy(new_entry->value, value);
+  strcpy(new_entry->value.cstr_value, value);
 
   if (!dict->entries[slot]) dict->entries[slot] = new_entry;
   else {
@@ -99,7 +99,7 @@ const char *stemp_dict_put(struct stemp_dict *dict, const char *key, const char 
   return key;
 }
 
-const char *stemp_dict_get(struct stemp_dict *dict, const char *key)
+const stemp_htable_value *stemp_dict_get(struct stemp_dict *dict, const char *key)
 {
   int slot;
   struct stemp_htable_entry *cur;
@@ -108,10 +108,10 @@ const char *stemp_dict_get(struct stemp_dict *dict, const char *key)
   slot = djb2_hash((const unsigned char *) key) % dict->size;
   cur = dict->entries[slot];
   if (!cur) return NULL; /* no such entry */
-  if (!strncmp(cur->key, key, STEMP_MAX_KEY_LENGTH)) return cur->value;
+  if (!strncmp(cur->key, key, STEMP_MAX_KEY_LENGTH)) return &(cur->value);
   while (cur->next) {
     cur = cur->next;
-    if (!strncmp(cur->key, key, STEMP_MAX_KEY_LENGTH)) return cur->value;
+    if (!strncmp(cur->key, key, STEMP_MAX_KEY_LENGTH)) return &(cur->value);
   }
   return NULL;
 }
@@ -129,12 +129,13 @@ static char *copy_char(char *dest, const char *src, int *i, int *j, int src_size
 static char *replace_expression(struct stemp_dict *dict, char *dest, const char *varname,
                                 int *j, int *dest_size)
 {
-  const char *value = stemp_dict_get(dict, varname);
+  const stemp_htable_value *value = stemp_dict_get(dict, varname);
   if (value) {
+    const char *str = value->cstr_value;
     /* TODO: we currently will crash, if the replacement will result in
      a buffer overflow */
     int i;
-    for (i = 0; i < strlen(value); i++) dest[(*j)++] = value[i];
+    for (i = 0; i < strlen(str); i++) dest[(*j)++] = str[i];
   }
   return dest;
 }
@@ -148,7 +149,7 @@ char *stemp_apply_template(const char *tpl_str, struct stemp_dict *dict)
   if (!tpl_str) return NULL;
   input_size = strlen(tpl_str);
   output_size = input_size * 2;
-  output = malloc(output_size);
+  output = calloc(output_size, sizeof(char));
 
   if (output) {
     int i = 0, j = 0;
@@ -175,7 +176,7 @@ char *stemp_apply_template(const char *tpl_str, struct stemp_dict *dict)
             i = expr_end + 1; /* update input pointer */
             expr_end -= 2;
             expr_len = expr_end - expr_start + 1;
-            expr = malloc(expr_len);
+            expr = calloc(expr_len + 1, sizeof(char));
             memcpy(expr, &tpl_str[expr_start], expr_len);
             expr[expr_len] = 0;
             output = replace_expression(dict, output, expr, &j, &output_size);

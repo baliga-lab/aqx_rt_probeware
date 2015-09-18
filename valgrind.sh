@@ -1,0 +1,2 @@
+valgrind --track-origins=yes $@
+
