@@ -1,9 +1,16 @@
+/* config_server.c - Configuration server
+ *
+ * Description: Configuration is handled here, the user can modify the
+ * ------------ settings through the embedded web interface
+ */
 #include "config_server.h"
 #include "aqxapi_client.h"
 #include "simple_templates.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 #define HTDOCS_PREFIX "htdocs"
 /* Length of the opening and closing option tags <option "..."></option> */
@@ -36,8 +43,7 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
   LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
             method, url, version, upload_data);
   if (!strcmp(url, "/")) {
-    LOG_DEBUG("BLUBBER URL: '%s'\n", url);
-    filepath = "templates/index.html";
+    filepath = "templates/system_settings.html";
     is_static = 0;
   } else {
     int pathlen = strlen(url) + strlen(HTDOCS_PREFIX);
@@ -62,7 +68,7 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
   /* Directly serve up the response from a file */
   if (is_static) {
     /* destroy will auto close the file, don't call fclose() !!!! */
-    LOG_DEBUG("serve static (from '%s'), size: %d\n", filepath, file_size);
+    LOG_DEBUG("serve static (from '%s'), size: %d\n", filepath, (int) file_size);
     response = MHD_create_response_from_fd(file_size, fileno(fp));
     ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);
@@ -118,13 +124,7 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
   return ret;
 }
 
-struct MHD_Daemon *start_webserver()
-{
-  return MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
-                            &answer_to_connection, NULL, MHD_OPTION_END);
-}
-
-void parse_config_line(struct aqxclient_config *cfg, char *line)
+static void parse_config_line(struct aqxclient_config *cfg, char *line)
 {
   /* remove trailing white space */
   int line_end = strlen(line);
@@ -153,6 +153,10 @@ void parse_config_line(struct aqxclient_config *cfg, char *line)
   }
 }
 
+/**********************************************************************
+ * Public API
+ **********************************************************************/
+
 struct aqxclient_config *read_config()
 {
   FILE *fp = fopen("config.ini", "r");
@@ -170,4 +174,10 @@ struct aqxclient_config *read_config()
     fclose(fp);
   }
   return &client_config;
+}
+
+struct MHD_Daemon *start_webserver()
+{
+  return MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
+                            &answer_to_connection, NULL, MHD_OPTION_END);
 }
