@@ -34,27 +34,51 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
                                  size_t *upload_data_size, void **con_cls)
 {
   struct MHD_Response *response;
+  struct MHD_PostProcessor *pp = *con_cls;
   FILE *fp;
   uint64_t file_size;
-  int ret = 0, is_static = 1;
+  int ret = 0, is_static = 1, has_token = 0;
   const char *filepath;
   char *path_buffer = NULL;
 
   LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
             method, url, version, upload_data);
+
+  /* Check and process routes */
   if (!strcmp(url, "/")) {
-    filepath = "templates/system_settings.html";
-    is_static = 0;
-  } else {
+    if (has_token) {
+      filepath = "templates/system_settings.html";
+      is_static = 0;
+    } else {
+      /* redirect to static page */
+      url = "/enter_token.html";
+    }
+  } else if (!strcmp(url, "/enter-token")) {
+    /* Submitted google token */
+    if (!pp) {
+      //pp = MHD_create_post_processor(connection, 1024, ...);
+    }
+    LOG_DEBUG("submitted token: %s\n", upload_data);
+
+    /* We implement the PRG pattern here (POST-Redirect-GET) */
+    response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", "/");
+    ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    return ret;
+  }
+
+  /* construct the path to the static file */
+  if (is_static) {
     int pathlen = strlen(url) + strlen(HTDOCS_PREFIX);
     path_buffer = (char *) malloc(pathlen + 1);
     memset(path_buffer, 0, pathlen + 1);
     snprintf(path_buffer, pathlen + 1, "%s%s", HTDOCS_PREFIX, url);
     LOG_DEBUG("PATH BUFFER: '%s' (from url '%s')\n", path_buffer, url);
-
     filepath = path_buffer;
   }
 
+  /* open the file, regardless if static or template */
   fp = fopen(filepath, "r");
   if (fp) {
     fseek(fp, 0L, SEEK_END);
@@ -73,7 +97,7 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
     ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);
   } else {
-    /* dynamic template */
+    /* dynamic template, currently this is only the system setting  */
     int i;
     struct aqx_system_entries *entries = NULL;
     struct stemp_dict *dict = NULL;

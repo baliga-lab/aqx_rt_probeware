@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <head><title>Vernier Client (Enter Token) - Project Feed 1010</title></head>
+  <body>
+    <h1>Google Authentication</h1>
+    <p>
+      To use this client you will need an access token which is based on
+      your Google account. Please go
+      <a href="https://accounts.google.com/o/oauth2/auth?scope=email%20profile&redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&client_id=75692667349-nble6luh47u4o0e3srath2nf45sv3679.apps.googleusercontent.com" target="_blank">here</a> to obtain your personal token and paste it into the
+      input field below.
+    </p>
+    <form action="/enter-token" method="POST">
+      <div>
+        <label for="access-token">Google Access Token</label>
+        <input type="text" id="access-token" name="access-token" placeholder="Google access token"></input>
+      </div>
+      <div>
+        <input type="submit"></input>
+      </div>
+    </form>
+  </body>
+</html>
