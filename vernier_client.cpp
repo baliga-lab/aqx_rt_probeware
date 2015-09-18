@@ -119,6 +119,7 @@ void signal_handler(int signum)
   should_exit = 1;
 }
 
+#define HTDOCS_PREFIX "htdocs"
 /*
  * Handle the HTTP server requests here
  */
@@ -130,33 +131,56 @@ int answer_to_connection (void *cls, struct MHD_Connection *connection,
 {
   struct MHD_Response *response;
   FILE *fp;
-  int ret = 0;
+  uint64_t size;
+  int ret = 0, is_static = 1;
   const char *filepath;
+  char *path_buffer = NULL;
+  struct aqx_system_entries *entries;
+
 
   LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
             method, url, version, upload_data);
-  if (!strcmp(url, "/favicon.ico")) {
-    filepath = "htdocs/favicon.ico";
-  } else {
+  if (!strcmp(url, "/")) {
+    LOG_DEBUG("BLUBBER URL: '%s'\n", url);
     filepath = "htdocs/index.html";
+    entries = aqx_get_systems();
+    aqx_free_systems(entries);
+
+  } else {
+    int pathlen = strlen(url) + strlen(HTDOCS_PREFIX);
+    path_buffer = (char *) malloc(pathlen + 1);
+    memset(path_buffer, 0, pathlen + 1);
+    snprintf(path_buffer, pathlen + 1, "%s%s", HTDOCS_PREFIX, url);
+    LOG_DEBUG("PATH BUFFER: '%s' (from url '%s')\n", path_buffer, url);
+
+    filepath = path_buffer;
   }
 
   fp = fopen(filepath, "r");
   if (fp) {
-    uint64_t size;
     fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
     rewind(fp);
-    response = MHD_create_response_from_fd(size, fileno(fp));
-    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-    MHD_destroy_response(response); /* destroy will auto close the file */
-    return ret;
   } else {
     LOG_DEBUG("open failed\n");
-    return ret;
+    return 0;
   }
-}
 
+  /* Directly serve up the response from a file */
+  if (is_static) {
+    LOG_DEBUG("serve static (from '%s')\n", filepath);
+    response = MHD_create_response_from_fd(size, fileno(fp));
+  } else {
+    /* dynamic template */
+    LOG_DEBUG("SERVING DYNAMIC TEMPLATE (from '%s')\n", filepath);
+  }
+  ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  MHD_destroy_response(response); /* destroy will auto close the file */
+
+  if (fp) fclose(fp);
+  if (path_buffer) free(path_buffer);
+  return ret;
+}
 
 struct aqxclient_config {
   int service_port;
@@ -283,7 +307,6 @@ void measure()
 
 int main(int argc, char* argv[])
 {
-  struct aqx_system_entries *entries;
   struct MHD_Daemon *daemon;
   int i;
 
@@ -326,9 +349,6 @@ int main(int argc, char* argv[])
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 #endif
-
-  entries = aqx_get_systems();
-  aqx_free_systems(entries);
 
   if (daemon) {
     LOG_DEBUG("HTTP daemon started...");
