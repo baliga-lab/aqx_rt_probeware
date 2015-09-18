@@ -33,7 +33,7 @@
 extern "C" {
 #include "aqxapi_client.h"
 #include "simple_templates.h"
-#include "webserver.h"
+#include "config_server.h"
 }
 
 #define MEASUREMENTS_URL_PREFIX   "measurements_url="

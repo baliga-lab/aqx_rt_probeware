@@ -1,4 +1,4 @@
-#include "webserver.h"
+#include "config_server.h"
 #include "aqxapi_client.h"
 #include "simple_templates.h"
 
@@ -89,7 +89,6 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
         strcat(option_buffer, entries->entries[i].name);
         strcat(option_buffer, "</option>");
       }
-      LOG_DEBUG("OPTIONS: %s\n", option_buffer);
       stemp_dict_put(dict, "system_options", option_buffer);
       aqx_free_systems(entries);
       free(option_buffer);
