@@ -33,9 +33,8 @@
 extern "C" {
 #include "aqxapi_client.h"
 #include "simple_templates.h"
+#include "webserver.h"
 }
-
-#include <microhttpd.h>
 
 #define MEASUREMENTS_URL_PREFIX   "measurements_url="
 #define SYSTEMS_URL_PREFIX   "systems_url="
@@ -119,68 +118,6 @@ void signal_handler(int signum)
   should_exit = 1;
 }
 
-#define HTDOCS_PREFIX "htdocs"
-/*
- * Handle the HTTP server requests here
- */
-int answer_to_connection (void *cls, struct MHD_Connection *connection,
-                          const char *url,
-                          const char *method, const char *version,
-                          const char *upload_data,
-                          size_t *upload_data_size, void **con_cls)
-{
-  struct MHD_Response *response;
-  FILE *fp;
-  uint64_t size;
-  int ret = 0, is_static = 1;
-  const char *filepath;
-  char *path_buffer = NULL;
-  struct aqx_system_entries *entries;
-
-
-  LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
-            method, url, version, upload_data);
-  if (!strcmp(url, "/")) {
-    LOG_DEBUG("BLUBBER URL: '%s'\n", url);
-    filepath = "htdocs/index.html";
-    entries = aqx_get_systems();
-    aqx_free_systems(entries);
-
-  } else {
-    int pathlen = strlen(url) + strlen(HTDOCS_PREFIX);
-    path_buffer = (char *) malloc(pathlen + 1);
-    memset(path_buffer, 0, pathlen + 1);
-    snprintf(path_buffer, pathlen + 1, "%s%s", HTDOCS_PREFIX, url);
-    LOG_DEBUG("PATH BUFFER: '%s' (from url '%s')\n", path_buffer, url);
-
-    filepath = path_buffer;
-  }
-
-  fp = fopen(filepath, "r");
-  if (fp) {
-    fseek(fp, 0L, SEEK_END);
-    size = ftell(fp);
-    rewind(fp);
-  } else {
-    LOG_DEBUG("open failed\n");
-    return 0;
-  }
-
-  /* Directly serve up the response from a file */
-  if (is_static) {
-    LOG_DEBUG("serve static (from '%s')\n", filepath);
-    response = MHD_create_response_from_fd(size, fileno(fp));
-  } else {
-    /* dynamic template */
-    LOG_DEBUG("SERVING DYNAMIC TEMPLATE (from '%s')\n", filepath);
-  }
-  ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-  MHD_destroy_response(response); /* destroy will auto close the file */
-
-  if (fp) fclose(fp);
-  if (path_buffer) free(path_buffer);
-  return ret;
-}
 
 struct aqxclient_config {
   int service_port;
@@ -325,8 +262,7 @@ int main(int argc, char* argv[])
 
 
   LOG_DEBUG("starting the HTTP daemon...");
-  daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
-                            &answer_to_connection, NULL, MHD_OPTION_END);
+  daemon = start_webserver(client_config.service_port);
 
   /*
     We install a simple signal handler so we can cleanly shutdown.

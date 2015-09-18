@@ -7,7 +7,7 @@ LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
 
 bin_PROGRAMS = vernier_client
 
-vernier_client_SOURCES = 	vernier_client.cpp aqxapi_client.c simple_templates.c
+vernier_client_SOURCES = 	vernier_client.cpp aqxapi_client.c simple_templates.c webserver.c
 
 vernier_client_LDADD   = $(GOIO_LIBS) $(NGIO_LIBS) -lmicrohttpd -lcurl -ljson-c
 
