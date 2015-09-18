@@ -36,13 +36,6 @@ extern "C" {
 #include "config_server.h"
 }
 
-#define MEASUREMENTS_URL_PREFIX   "measurements_url="
-#define SYSTEMS_URL_PREFIX   "systems_url="
-#define REFRESH_TOKEN_PREFIX "refresh_token="
-#define SYSTEM_UID_PREFIX    "system_uid="
-#define SEND_INTERVAL_PREFIX "send_interval_secs="
-#define SERVICE_PORT_PREFIX  "service_port="
-
 #define MAX_NUM_MEASUREMENTS 100
 
 /* Remove or comment for production */
@@ -118,71 +111,12 @@ void signal_handler(int signum)
   should_exit = 1;
 }
 
-
-struct aqxclient_config {
-  int service_port;
-  char measurements_url[200];
-  char systems_url[200];
-  char system_uid[48];
-  char refresh_token[100];
-  int send_interval_secs;
-};
-
-static struct aqxclient_config client_config;
-
-void parse_config_line(struct aqxclient_config *cfg, char *line)
-{
-  /* remove trailing white space */
-  int line_end = strlen(line);
-  while (line_end > 0 && isspace(line[line_end - 1])) {
-    line[line_end - 1] = 0;
-    line_end--;
-  }
-
-  /* extract configuration settings */
-  if (!strncmp(line, MEASUREMENTS_URL_PREFIX, strlen(MEASUREMENTS_URL_PREFIX))) {
-    strncpy(cfg->measurements_url, &line[strlen(MEASUREMENTS_URL_PREFIX)],
-            sizeof(cfg->measurements_url));
-  } else if (!strncmp(line, SYSTEMS_URL_PREFIX, strlen(SYSTEMS_URL_PREFIX))) {
-    strncpy(cfg->systems_url, &line[strlen(SYSTEMS_URL_PREFIX)],
-            sizeof(cfg->systems_url));
-  } else if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
-    strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
-  } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
-    strncpy(cfg->refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)], sizeof(cfg->refresh_token));
-  } else if (!strncmp(line, SEND_INTERVAL_PREFIX, strlen(SEND_INTERVAL_PREFIX))) {
-    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SEND_INTERVAL_PREFIX)]);
-    cfg->send_interval_secs = atoi(&line[strlen(SEND_INTERVAL_PREFIX)]);
-  } else if (!strncmp(line, SERVICE_PORT_PREFIX, strlen(SERVICE_PORT_PREFIX))) {
-    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SERVICE_PORT_PREFIX)]);
-    cfg->service_port = atoi(&line[strlen(SERVICE_PORT_PREFIX)]);
-  }
-}
-
-static struct aqxclient_config *read_config(struct aqxclient_config *cfg)
-{
-  FILE *fp = fopen("config.ini", "r");
-  static char line_buffer[200];
-
-  if (fp) {
-    LOG_DEBUG("configuration file opened\n");
-    while (fgets(line_buffer, sizeof(line_buffer), fp)) {
-      parse_config_line(cfg, line_buffer);
-    }
-    LOG_DEBUG("measurements url: '%s', systems url: '%s' system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
-              cfg->measurements_url, cfg->systems_url, cfg->system_uid, cfg->refresh_token,
-              cfg->send_interval_secs);
-    fclose(fp);
-  }
-  return cfg;
-}
-
 NGIO_LIBRARY_HANDLE init_system()
 {
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
   struct aqx_client_options aqx_options;
   NGIO_LIBRARY_HANDLE hNGIOlib;
-  struct aqxclient_config *cfg = read_config(&client_config);
+  struct aqxclient_config *cfg = read_config();
 
   aqx_options.add_measurements_url = cfg->measurements_url;
   aqx_options.get_systems_url = cfg->systems_url;
@@ -262,7 +196,7 @@ int main(int argc, char* argv[])
 
 
   LOG_DEBUG("starting the HTTP daemon...");
-  daemon = start_webserver(client_config.service_port);
+  daemon = start_webserver();
 
   /*
     We install a simple signal handler so we can cleanly shutdown.

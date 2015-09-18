@@ -8,6 +8,14 @@
 #define HTDOCS_PREFIX "htdocs"
 /* Length of the opening and closing option tags <option "..."></option> */
 #define OPTION_TAG_LENGTH (11 + 9)
+#define MEASUREMENTS_URL_PREFIX   "measurements_url="
+#define SYSTEMS_URL_PREFIX   "systems_url="
+#define REFRESH_TOKEN_PREFIX "refresh_token="
+#define SYSTEM_UID_PREFIX    "system_uid="
+#define SEND_INTERVAL_PREFIX "send_interval_secs="
+#define SERVICE_PORT_PREFIX  "service_port="
+
+static struct aqxclient_config client_config;
 
 /*
  * Handle the HTTP server requests here.
@@ -110,8 +118,56 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
   return ret;
 }
 
-struct MHD_Daemon *start_webserver(int port)
+struct MHD_Daemon *start_webserver()
 {
-  return MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, port, NULL, NULL,
+  return MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
                             &answer_to_connection, NULL, MHD_OPTION_END);
+}
+
+void parse_config_line(struct aqxclient_config *cfg, char *line)
+{
+  /* remove trailing white space */
+  int line_end = strlen(line);
+  while (line_end > 0 && isspace(line[line_end - 1])) {
+    line[line_end - 1] = 0;
+    line_end--;
+  }
+
+  /* extract configuration settings */
+  if (!strncmp(line, MEASUREMENTS_URL_PREFIX, strlen(MEASUREMENTS_URL_PREFIX))) {
+    strncpy(cfg->measurements_url, &line[strlen(MEASUREMENTS_URL_PREFIX)],
+            sizeof(cfg->measurements_url));
+  } else if (!strncmp(line, SYSTEMS_URL_PREFIX, strlen(SYSTEMS_URL_PREFIX))) {
+    strncpy(cfg->systems_url, &line[strlen(SYSTEMS_URL_PREFIX)],
+            sizeof(cfg->systems_url));
+  } else if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
+    strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
+  } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
+    strncpy(cfg->refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)], sizeof(cfg->refresh_token));
+  } else if (!strncmp(line, SEND_INTERVAL_PREFIX, strlen(SEND_INTERVAL_PREFIX))) {
+    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SEND_INTERVAL_PREFIX)]);
+    cfg->send_interval_secs = atoi(&line[strlen(SEND_INTERVAL_PREFIX)]);
+  } else if (!strncmp(line, SERVICE_PORT_PREFIX, strlen(SERVICE_PORT_PREFIX))) {
+    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SERVICE_PORT_PREFIX)]);
+    cfg->service_port = atoi(&line[strlen(SERVICE_PORT_PREFIX)]);
+  }
+}
+
+struct aqxclient_config *read_config()
+{
+  FILE *fp = fopen("config.ini", "r");
+  static char line_buffer[200];
+
+  if (fp) {
+    LOG_DEBUG("configuration file opened\n");
+    while (fgets(line_buffer, sizeof(line_buffer), fp)) {
+      parse_config_line(&client_config, line_buffer);
+    }
+    LOG_DEBUG("measurements url: '%s', systems url: '%s' system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
+              client_config.measurements_url, client_config.systems_url,
+              client_config.system_uid, client_config.refresh_token,
+              client_config.send_interval_secs);
+    fclose(fp);
+  }
+  return &client_config;
 }
