@@ -27,22 +27,15 @@ static struct aqxclient_config client_config;
 /*
  * Handle the HTTP server requests here.
  */
-static int answer_to_connection (void *cls, struct MHD_Connection *connection,
-                                 const char *url,
-                                 const char *method, const char *version,
-                                 const char *upload_data,
-                                 size_t *upload_data_size, void **con_cls)
+/* GET method requests */
+static int handle_get(struct MHD_Connection *connection, const char *url)
 {
   struct MHD_Response *response;
-  struct MHD_PostProcessor *pp = *con_cls;
   FILE *fp;
   uint64_t file_size;
   int ret = 0, is_static = 1, has_token = 0;
   const char *filepath;
   char *path_buffer = NULL;
-
-  LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
-            method, url, version, upload_data);
 
   /* Check and process routes */
   if (!strcmp(url, "/")) {
@@ -53,19 +46,6 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
       /* redirect to static page */
       url = "/enter_token.html";
     }
-  } else if (!strcmp(url, "/enter-token")) {
-    /* Submitted google token */
-    if (!pp) {
-      //pp = MHD_create_post_processor(connection, 1024, ...);
-    }
-    LOG_DEBUG("submitted token: %s\n", upload_data);
-
-    /* We implement the PRG pattern here (POST-Redirect-GET) */
-    response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);
-    MHD_add_response_header(response, "Location", "/");
-    ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
-    MHD_destroy_response(response);
-    return ret;
   }
 
   /* construct the path to the static file */
@@ -143,9 +123,51 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
       free(template_in);
     }
   }
-
   if (path_buffer) free(path_buffer);
   return ret;
+}
+
+/* POST method requests */
+static int handle_post(struct MHD_Connection *connection,
+                       const char *url,
+                       const char *upload_data, size_t *upload_data_size,
+                       void **con_cls)
+{
+  struct MHD_Response *response;
+  struct MHD_PostProcessor *pp = *con_cls;
+  int ret = 0;
+
+  if (!strcmp(url, "/enter-token")) {
+    /* Submitted google token */
+    if (!pp) {
+      //pp = MHD_create_post_processor(connection, 1024, ...);
+    }
+    LOG_DEBUG("submitted token: %s\n", upload_data);
+
+    /* We implement the PRG pattern here (POST-Redirect-GET) */
+    response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", "/");
+    ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    return ret;
+  }
+  return ret;
+}
+
+static int answer_to_connection (void *cls, struct MHD_Connection *connection,
+                                 const char *url,
+                                 const char *method, const char *version,
+                                 const char *upload_data,
+                                 size_t *upload_data_size, void **con_cls)
+{
+  LOG_DEBUG("Method: '%s', URL: '%s', Version: '%s' upload data: '%s'\n",
+            method, url, version, upload_data);
+  if (!strcmp("GET", method)) {
+    return handle_get(connection, url);
+  } else if (!strcmp("POST", method)) {
+    return handle_post(connection, url, upload_data, upload_data_size, con_cls);
+  }
+  return 0;
 }
 
 static void parse_config_line(struct aqxclient_config *cfg, char *line)
