@@ -10,9 +10,10 @@
 #define GOOGLE_OAUTH2_ENDPOINT_URL "https://www.googleapis.com/oauth2/v3/token"
 #define GOOGLE_CLIENT_ID "75692667349-nble6luh47u4o0e3srath2nf45sv3679.apps.googleusercontent.com"
 #define GOOGLE_CLIENT_SECRET "wvOoMwCJMbKTCLhCdR81VpRx"
-#define GOOGLE_REDIRECT_URL "urn:ietf:wg:oauth:2.0:oob"
+#define GOOGLE_REDIRECT_URI "urn:ietf:wg:oauth:2.0:oob"
 
 #define REFRESH_PARAMS "refresh_token=%s&client_id=%s&client_secret=%s&grant_type=refresh_token"
+#define GET_TOKEN_PARAMS "code=%s&client_id=%s&client_secret=%s&redirect_uri=%s&grant_type=authorization_code"
 
 #define ACCESS_TOKEN_MAXLEN 100
 #define AUTH_HEADER_MAXLEN 200
@@ -53,6 +54,58 @@ static size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdat
   memcpy(&json_buffer[json_count], ptr, num_bytes);
   json_count += num_bytes;
   return num_bytes;
+}
+
+/*************************************************************************************
+ * get_refresh_token()
+ *************************************************************************************/
+/*
+  Given the initial Google token, retrieve a refresh token from the Google token service
+  endpoint.
+*/
+const char *aqx_get_refresh_token(const char *initial_code)
+{
+  CURL *curl;
+  CURLcode result;
+  const char *retval = NULL;
+
+  curl = curl_easy_init();
+
+  sprintf(refresh_post_params, GET_TOKEN_PARAMS, initial_code,
+          GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+  if (curl) {
+    memset(json_buffer, 0, sizeof(json_buffer));
+    curl_easy_setopt(curl, CURLOPT_URL, GOOGLE_OAUTH2_ENDPOINT_URL);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, refresh_post_params);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
+    result = curl_easy_perform(curl);
+
+    if (result != CURLE_OK) {
+      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+      /* TODO: connection error - buffer it up */
+    } else {
+      json_object *obj;
+      obj = json_tokener_parse(json_buffer);
+      json_count = 0;
+
+      /* evaluate data */
+      if (json_object_is_type(obj, json_type_object)) {
+        struct json_object *refresh_token_obj;
+
+        if (json_object_object_get_ex(obj, "refresh_token", &refresh_token_obj)) {
+          const char *recvd_token = json_object_get_string(refresh_token_obj);
+          strncpy(access_token, recvd_token, ACCESS_TOKEN_MAXLEN);
+          retval = access_token;
+        } else {
+          LOG_DEBUG("no refresh token found\n");
+        }
+      }
+      json_object_put(obj);
+    }
+    curl_easy_cleanup(curl);
+  }
+  return retval;
 }
 
 /*************************************************************************************

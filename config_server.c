@@ -141,7 +141,11 @@ static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *
 {
   LOG_DEBUG("ITERATE_POST\n");
   if (!strcmp("access-token", key)) {
-    LOG_DEBUG("submitted token: '%s'\n", data);
+    const char *refresh_token = aqx_get_refresh_token(data);
+    if (refresh_token) {
+      LOG_DEBUG("submitted token: '%s', refresh token: '%s'\n", data, refresh_token);
+      /* copy the valid token into the configuration */
+    }
     return MHD_NO;
   }
   return MHD_YES;
@@ -158,27 +162,37 @@ static int handle_post(struct MHD_Connection *connection,
                        void **con_cls)
 {
   struct MHD_Response *response;
+  /* user data is currently post processor */
   struct MHD_PostProcessor *pp = *con_cls;
   int ret = 0;
-  if (!pp) {
-    pp = MHD_create_post_processor(connection, 1024, iterate_post, NULL);
-    *con_cls = (void *) pp;
-    return MHD_YES;
-  } else {
-    if (*upload_data_size) {
-      MHD_post_process(pp, upload_data, *upload_data_size);
-      *upload_data_size = 0;
+  if (!strcmp("/enter-token", url)) {
+    if (!pp) {
+      pp = MHD_create_post_processor(connection, 1024, iterate_post, NULL);
+      *con_cls = (void *) pp;
       return MHD_YES;
     } else {
-      /* No more data */
-      /* We implement the PRG pattern here (POST-Redirect-GET) */
-      MHD_destroy_post_processor(pp);
-      response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);      
-      MHD_add_response_header(response, "Location", "/");
-      ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
-      MHD_destroy_response(response);
-      return ret;
+      if (*upload_data_size) {
+        MHD_post_process(pp, upload_data, *upload_data_size);
+        /* setting upload data to 0 says "processed" */
+        *upload_data_size = 0;
+        return MHD_YES;
+      } else {
+        /* No more data */
+        /* We implement the PRG pattern here (POST-Redirect-GET) */
+        MHD_destroy_post_processor(pp);
+
+        response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);      
+        MHD_add_response_header(response, "Location", "/");
+        ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+        MHD_destroy_response(response);
+        return ret;
+      }
     }
+  } else {
+    response = MHD_create_response_from_buffer(5, "error", MHD_RESPMEM_PERSISTENT);      
+    ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    return ret;    
   }
 }
 

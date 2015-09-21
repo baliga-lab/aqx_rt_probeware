@@ -34,6 +34,7 @@ struct aqx_client_options {
 extern int aqx_client_init(struct aqx_client_options *options);
 extern struct aqx_system_entries *aqx_get_systems();
 extern void aqx_free_systems(struct aqx_system_entries *entries);
+extern const char *aqx_get_refresh_token(const char *initial_code);
 
 extern int aqx_add_measurement(struct aqx_measurement *m);
 /* force send everything available */
