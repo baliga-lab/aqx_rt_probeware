@@ -128,6 +128,30 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
 }
 
 /* POST method requests */
+void request_completed (void *cls, struct MHD_Connection *connection, 
+                        void **con_cls, enum MHD_RequestTerminationCode toe)
+{
+  /* this is a no-op */
+}
+
+static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *key,
+                        const char *filename, const char *content_type,
+                        const char *transfer_encoding, const char *data, 
+                        uint64_t off, size_t size)
+{
+  LOG_DEBUG("ITERATE_POST\n");
+  if (!strcmp("access-token", key)) {
+    LOG_DEBUG("submitted token: '%s'\n", data);
+    return MHD_NO;
+  }
+  return MHD_YES;
+}
+
+/*
+  The simplest way to implement the post processor handling.
+  We create the post processor at the beginning and
+  destroy it when there is no more data.
+*/
 static int handle_post(struct MHD_Connection *connection,
                        const char *url,
                        const char *upload_data, size_t *upload_data_size,
@@ -136,22 +160,26 @@ static int handle_post(struct MHD_Connection *connection,
   struct MHD_Response *response;
   struct MHD_PostProcessor *pp = *con_cls;
   int ret = 0;
-
-  if (!strcmp(url, "/enter-token")) {
-    /* Submitted google token */
-    if (!pp) {
-      //pp = MHD_create_post_processor(connection, 1024, ...);
+  if (!pp) {
+    pp = MHD_create_post_processor(connection, 1024, iterate_post, NULL);
+    *con_cls = (void *) pp;
+    return MHD_YES;
+  } else {
+    if (*upload_data_size) {
+      MHD_post_process(pp, upload_data, *upload_data_size);
+      *upload_data_size = 0;
+      return MHD_YES;
+    } else {
+      /* No more data */
+      /* We implement the PRG pattern here (POST-Redirect-GET) */
+      MHD_destroy_post_processor(pp);
+      response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);      
+      MHD_add_response_header(response, "Location", "/");
+      ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+      MHD_destroy_response(response);
+      return ret;
     }
-    LOG_DEBUG("submitted token: %s\n", upload_data);
-
-    /* We implement the PRG pattern here (POST-Redirect-GET) */
-    response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);
-    MHD_add_response_header(response, "Location", "/");
-    ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
-    MHD_destroy_response(response);
-    return ret;
   }
-  return ret;
 }
 
 static int answer_to_connection (void *cls, struct MHD_Connection *connection,
@@ -167,7 +195,7 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
   } else if (!strcmp("POST", method)) {
     return handle_post(connection, url, upload_data, upload_data_size, con_cls);
   }
-  return 0;
+  return MHD_NO;
 }
 
 static void parse_config_line(struct aqxclient_config *cfg, char *line)
@@ -225,5 +253,7 @@ struct aqxclient_config *read_config()
 struct MHD_Daemon *start_webserver()
 {
   return MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
-                            &answer_to_connection, NULL, MHD_OPTION_END);
+                          &answer_to_connection, NULL,
+                          MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,
+                          MHD_OPTION_END);
 }
