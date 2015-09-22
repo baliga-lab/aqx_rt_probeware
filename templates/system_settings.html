@@ -3,9 +3,9 @@
   <head><title>Vernier Client (System Settings) - Project Feed 1010</title></head>
   <body>
     <h1>System Settings</h1>
-    <form>
+    <form method="POST" action="/set-system">
       <div>
-        <label for="system">Please specify your system </label>
+        <label for="system">Please specify your system (current: {{current_system}}) </label>
         <select name="system" id="system">{{system_options}}</select>
       </div>
       <div style="margin-top: 10px;">
