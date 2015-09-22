@@ -9,7 +9,6 @@ struct aqxclient_config {
   char systems_url[200];
   char system_uid[48];
   char refresh_token[100];
-  int send_interval_secs;
 };
 
 extern struct aqxclient_config *read_config();

@@ -20,7 +20,6 @@
 #define SYSTEMS_URL_PREFIX   "systems_url="
 #define REFRESH_TOKEN_PREFIX "refresh_token="
 #define SYSTEM_UID_PREFIX    "system_uid="
-#define SEND_INTERVAL_PREFIX "send_interval_secs="
 #define SERVICE_PORT_PREFIX  "service_port="
 
 static struct aqxclient_config client_config;
@@ -57,8 +56,7 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
   /* construct the path to the static file */
   if (is_static) {
     int pathlen = strlen(url) + strlen(HTDOCS_PREFIX);
-    path_buffer = (char *) malloc(pathlen + 1);
-    memset(path_buffer, 0, pathlen + 1);
+    path_buffer = (char *) calloc(pathlen + 1, sizeof(char));
     snprintf(path_buffer, pathlen + 1, "%s%s", HTDOCS_PREFIX, url);
     LOG_DEBUG("PATH BUFFER: '%s' (from url '%s')\n", path_buffer, url);
     filepath = path_buffer;
@@ -171,7 +169,7 @@ static int handle_post(struct MHD_Connection *connection,
   int ret = 0;
   if (!strcmp("/enter-token", url)) {
     if (!post_data) {
-      post_data = (struct token_post_data *) malloc(sizeof(struct token_post_data));
+      post_data = (struct token_post_data *) calloc(1, sizeof(struct token_post_data));
       if (post_data) {
         post_data->pp = MHD_create_post_processor(connection, 1024, iterate_post, post_data);
         *con_cls = (void *) post_data;
@@ -249,9 +247,6 @@ static void parse_config_line(struct aqxclient_config *cfg, char *line)
     strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
   } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
     strncpy(cfg->refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)], sizeof(cfg->refresh_token));
-  } else if (!strncmp(line, SEND_INTERVAL_PREFIX, strlen(SEND_INTERVAL_PREFIX))) {
-    LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SEND_INTERVAL_PREFIX)]);
-    cfg->send_interval_secs = atoi(&line[strlen(SEND_INTERVAL_PREFIX)]);
   } else if (!strncmp(line, SERVICE_PORT_PREFIX, strlen(SERVICE_PORT_PREFIX))) {
     LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SERVICE_PORT_PREFIX)]);
     cfg->service_port = atoi(&line[strlen(SERVICE_PORT_PREFIX)]);
@@ -272,10 +267,9 @@ struct aqxclient_config *read_config()
     while (fgets(line_buffer, sizeof(line_buffer), fp)) {
       parse_config_line(&client_config, line_buffer);
     }
-    LOG_DEBUG("measurements url: '%s', systems url: '%s' system_uid: '%s', refresh_token: '%s', interval(secs): %d\n",
+    LOG_DEBUG("measurements url: '%s', systems url: '%s' system_uid: '%s', refresh_token: '%s'\n",
               client_config.measurements_url, client_config.systems_url,
-              client_config.system_uid, client_config.refresh_token,
-              client_config.send_interval_secs);
+              client_config.system_uid, client_config.refresh_token);
     fclose(fp);
   }
   return &client_config;

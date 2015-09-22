@@ -122,7 +122,6 @@ NGIO_LIBRARY_HANDLE init_system()
   aqx_options.get_systems_url = cfg->systems_url;
   aqx_options.system_uid = cfg->system_uid;
   aqx_options.oauth2_refresh_token = cfg->refresh_token;
-  aqx_options.send_interval_secs = cfg->send_interval_secs;
 
 	GoIO_Init();
 	GoIO_GetDLLVersion(&goio_major, &goio_minor);

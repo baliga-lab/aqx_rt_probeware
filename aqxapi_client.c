@@ -19,6 +19,7 @@
 #define REFRESH_POST_PARAMS_MAXLEN 1024
 #define JSON_BUFFER_SIZE 2048
 #define MAX_MEASUREMENTS 10
+#define SEND_INTERVAL_SECS 60
 
 /* Module init configuration */
 static struct aqx_client_options config;
@@ -272,9 +273,8 @@ static struct aqx_system_entries *get_systems(const char *service_url, const cha
 {
   CURL *curl;
   CURLcode result;
-  int retval = 0;
   static char app_url_buffer[200];
-  struct aqx_system_entries *entries;
+  struct aqx_system_entries *entries = NULL;
 
   curl = curl_easy_init();
   if (curl) {
@@ -314,9 +314,9 @@ static struct aqx_system_entries *get_systems(const char *service_url, const cha
         if (json_object_object_get_ex(obj, "systems", &system_list)) {
           int len = json_object_array_length(system_list), slen;
           if (len) {
-            entries = malloc(sizeof(struct aqx_system_entries));
+            entries = calloc(1, sizeof(struct aqx_system_entries));
             entries->num_entries = len;
-            entries->entries = malloc(sizeof(struct aqx_system_info) * len);
+            entries->entries = calloc(len, sizeof(struct aqx_system_info));
 
             LOG_DEBUG("Number of systems: %d\n", len);
             for (i = 0; i < len; i++) {
@@ -324,14 +324,14 @@ static struct aqx_system_entries *get_systems(const char *service_url, const cha
               json_object_object_get_ex(system, "uid", &s);
               uid = json_object_get_string(s);
               slen = strlen(uid);
-              entries->entries[i].uid = malloc(slen + 1);
+              entries->entries[i].uid = calloc(slen + 1, sizeof(char));
               strcpy(entries->entries[i].uid, uid);
               entries->entries[i].uid[slen] = 0;
 
               json_object_object_get_ex(system, "name", &s);
               name = json_object_get_string(s);
               slen = strlen(name);
-              entries->entries[i].name = malloc(slen + 1);
+              entries->entries[i].name = calloc(slen + 1, sizeof(char));
               strcpy(entries->entries[i].name, name);
               entries->entries[i].name[slen] = 0;
 
@@ -403,7 +403,7 @@ int aqx_add_measurement(struct aqx_measurement *m)
   time(&currtime);
   elapsed = currtime - last_submission_time;
   memcpy(&measurement_data[num_measurements++], m, sizeof(struct aqx_measurement));
-  if (elapsed >= config.send_interval_secs || num_measurements >= MAX_MEASUREMENTS) {
+  if (elapsed >= SEND_INTERVAL_SECS || num_measurements >= MAX_MEASUREMENTS) {
     aqx_client_flush();
   }
   return 1;

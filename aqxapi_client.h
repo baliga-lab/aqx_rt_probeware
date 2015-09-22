@@ -31,7 +31,6 @@ struct aqx_client_options {
   const char *get_systems_url; /* the service's URL */
   const char *system_uid; /* System's UID */
   const char *oauth2_refresh_token; /* OAuth2 refresh token from Google */
-  unsigned int send_interval_secs; /* send update every x seconds */
 };
 
 extern int aqx_client_init(struct aqx_client_options *options);
