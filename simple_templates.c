@@ -91,9 +91,25 @@ const char *stemp_dict_put(struct stemp_dict *dict, const char *key, const char 
   if (!dict->entries[slot]) dict->entries[slot] = new_entry;
   else {
     /* Append */
-    struct stemp_htable_entry *cur = dict->entries[slot];
-    while (cur->next) cur = cur->next;
-    cur->next = cur;
+    int replaced = 0;
+    struct stemp_htable_entry *cur = dict->entries[slot], *prev = NULL;
+    while (cur) {
+      if (!strcmp(cur->key, key)) {
+        if (!prev) dict->entries[slot] = new_entry;
+        else prev->next = new_entry;
+        new_entry->next = cur->next;
+
+        /* free the old entry's memory  */
+        if (cur->value.value_type == STHT_CSTR) free(cur->value.cstr_value);
+        else if (cur->value.value_type == STHT_PTR) free(cur->value.ptr_value);
+        free(cur);
+        replaced = 1;
+        break;
+      }
+      prev = cur;
+      cur = cur->next;
+    }
+    if (!replaced) prev->next = new_entry;
   }
   dict->num_entries++;
   return key;
