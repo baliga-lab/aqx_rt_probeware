@@ -16,8 +16,6 @@
 #define HTDOCS_PREFIX "htdocs"
 /* Length of the opening and closing option tags <option "..."></option> */
 #define OPTION_TAG_LENGTH (11 + 9)
-#define MEASUREMENTS_URL_PREFIX   "measurements_url="
-#define SYSTEMS_URL_PREFIX   "systems_url="
 #define REFRESH_TOKEN_PREFIX "refresh_token="
 #define SYSTEM_UID_PREFIX    "system_uid="
 #define SERVICE_PORT_PREFIX  "service_port="
@@ -237,13 +235,7 @@ static void parse_config_line(struct aqxclient_config *cfg, char *line)
   }
 
   /* extract configuration settings */
-  if (!strncmp(line, MEASUREMENTS_URL_PREFIX, strlen(MEASUREMENTS_URL_PREFIX))) {
-    strncpy(cfg->measurements_url, &line[strlen(MEASUREMENTS_URL_PREFIX)],
-            sizeof(cfg->measurements_url));
-  } else if (!strncmp(line, SYSTEMS_URL_PREFIX, strlen(SYSTEMS_URL_PREFIX))) {
-    strncpy(cfg->systems_url, &line[strlen(SYSTEMS_URL_PREFIX)],
-            sizeof(cfg->systems_url));
-  } else if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
+  if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
     strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
   } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
     strncpy(cfg->refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)], sizeof(cfg->refresh_token));
@@ -267,8 +259,7 @@ struct aqxclient_config *read_config()
     while (fgets(line_buffer, sizeof(line_buffer), fp)) {
       parse_config_line(&client_config, line_buffer);
     }
-    LOG_DEBUG("measurements url: '%s', systems url: '%s' system_uid: '%s', refresh_token: '%s'\n",
-              client_config.measurements_url, client_config.systems_url,
+    LOG_DEBUG("system_uid: '%s', refresh_token: '%s'\n",
               client_config.system_uid, client_config.refresh_token);
     fclose(fp);
   }

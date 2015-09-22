@@ -5,8 +5,6 @@
 
 struct aqxclient_config {
   int service_port;
-  char measurements_url[200];
-  char systems_url[200];
   char system_uid[48];
   char refresh_token[100];
 };

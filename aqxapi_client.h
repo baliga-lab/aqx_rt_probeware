@@ -27,8 +27,6 @@ struct aqx_system_entries {
 };
 
 struct aqx_client_options {
-  const char *add_measurements_url; /* the service's URL */
-  const char *get_systems_url; /* the service's URL */
   const char *system_uid; /* System's UID */
   const char *oauth2_refresh_token; /* OAuth2 refresh token from Google */
 };

@@ -11,9 +11,11 @@
 #define GOOGLE_CLIENT_ID "75692667349-nble6luh47u4o0e3srath2nf45sv3679.apps.googleusercontent.com"
 #define GOOGLE_CLIENT_SECRET "wvOoMwCJMbKTCLhCdR81VpRx"
 #define GOOGLE_REDIRECT_URI "urn:ietf:wg:oauth:2.0:oob"
-
 #define REFRESH_PARAMS "refresh_token=%s&client_id=%s&client_secret=%s&grant_type=refresh_token"
 #define GET_TOKEN_PARAMS "code=%s&client_id=%s&client_secret=%s&redirect_uri=%s&grant_type=authorization_code"
+
+#define AQX_MEASUREMENTS_URL "http://localhost:5000/api/v1/add-measurements/%s"
+#define AQX_SYSTEMS_URL      "http://localhost:5000/api/v1/systems"
 
 #define AUTH_HEADER_MAXLEN 200
 #define REFRESH_POST_PARAMS_MAXLEN 1024
@@ -164,8 +166,7 @@ static const char *get_access_token(const char *refresh_token)
 /*************************************************************************************
  * submit_measurements()
  *************************************************************************************/
-static int submit_measurements(const char *service_url, const char *access_token,
-                               const char *json_str)
+static int submit_measurements(const char *access_token, const char *json_str)
 {
   CURL *curl;
   CURLcode result;
@@ -177,7 +178,7 @@ static int submit_measurements(const char *service_url, const char *access_token
     struct curl_slist *chunk = NULL;
 
     memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), service_url, config.system_uid);
+    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_MEASUREMENTS_URL, config.system_uid);
 
     /* Verification header + Content-Type */
     sprintf(auth_header, "Authorization: Bearer %s", access_token);
@@ -269,7 +270,7 @@ static struct json_object *serialize_measurements()
  *
  *************************************************************************************/
 
-static struct aqx_system_entries *get_systems(const char *service_url, const char *access_token)
+static struct aqx_system_entries *get_systems(const char *access_token)
 {
   CURL *curl;
   CURLcode result;
@@ -281,7 +282,7 @@ static struct aqx_system_entries *get_systems(const char *service_url, const cha
     struct curl_slist *chunk = NULL;
 
     memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), service_url, config.system_uid);
+    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_SYSTEMS_URL, config.system_uid);
 
     /* Verification header + Content-Type */
     sprintf(auth_header, "Authorization: Bearer %s", access_token);
@@ -385,7 +386,7 @@ void aqx_client_flush()
     access_token = get_access_token(config.oauth2_refresh_token);
     if (access_token) {
       LOG_DEBUG("received access token: '%s'\n", access_token);
-      submit_measurements(config.add_measurements_url, access_token, json_str);
+      submit_measurements(access_token, json_str);
     }
 
     json_object_put(arr); /* free object */
@@ -414,7 +415,7 @@ struct aqx_system_entries *aqx_get_systems()
   const char *access_token = get_access_token(config.oauth2_refresh_token);
   if (access_token) {
     LOG_DEBUG("received access token: '%s'\n", access_token);
-    return get_systems(config.get_systems_url, access_token);
+    return get_systems(access_token);
   }
   return NULL;
 }

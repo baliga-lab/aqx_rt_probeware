@@ -118,8 +118,6 @@ NGIO_LIBRARY_HANDLE init_system()
   NGIO_LIBRARY_HANDLE hNGIOlib;
   struct aqxclient_config *cfg = read_config();
 
-  aqx_options.add_measurements_url = cfg->measurements_url;
-  aqx_options.get_systems_url = cfg->systems_url;
   aqx_options.system_uid = cfg->system_uid;
   aqx_options.oauth2_refresh_token = cfg->refresh_token;
 
