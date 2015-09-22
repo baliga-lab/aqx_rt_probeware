@@ -85,10 +85,10 @@ struct ngio_device ngio_devices[MAX_CONNECTED_NGIO_DEVICES];
 
 #define IS_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
 
-#define IS_PH(devname)  (devname && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
-#define IS_NH4(devname) (devname && !strncmp(SENSOR_NAME_NH4, devname, sizeof(devname)))
-#define IS_NO3(devname) (devname && !strncmp(SENSOR_NAME_NO3, devname, sizeof(devname)))
-#define IS_DO(devname)  (devname && (!strncmp(SENSOR_NAME_DO1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_DO2, devname, sizeof(devname)) ))
+#define IS_PH(devname)  (devname != NULL  && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
+#define IS_NH4(devname) (devname != NULL && !strncmp(SENSOR_NAME_NH4, devname, sizeof(devname)))
+#define IS_NO3(devname) (devname != NULL && !strncmp(SENSOR_NAME_NO3, devname, sizeof(devname)))
+#define IS_DO(devname)  (devname != NULL && (!strncmp(SENSOR_NAME_DO1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_DO2, devname, sizeof(devname)) ))
 
 const char *goio_deviceDesc[8] = {"?", "?", "Go! Temp", "Go! Link", "Go! Motion", "?", "?", "Mini GC"};
 int should_exit = 0;
@@ -114,12 +114,8 @@ void signal_handler(int signum)
 NGIO_LIBRARY_HANDLE init_system()
 {
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
-  struct aqx_client_options aqx_options;
   NGIO_LIBRARY_HANDLE hNGIOlib;
-  struct aqxclient_config *cfg = read_config();
-
-  aqx_options.system_uid = cfg->system_uid;
-  aqx_options.oauth2_refresh_token = cfg->refresh_token;
+  struct aqx_client_options *cfg = read_config();
 
 	GoIO_Init();
 	GoIO_GetDLLVersion(&goio_major, &goio_minor);
@@ -129,7 +125,7 @@ NGIO_LIBRARY_HANDLE init_system()
 	LOG_DEBUG("aqx_client V0.001 - (c) 2015 Institute for Systems Biology\nGoIO library version %d.%d\nNGIO library version %d.%d\n",
           goio_major, goio_minor, ngio_major, ngio_minor);
 
-  aqx_client_init(&aqx_options);
+  aqx_client_init(cfg);
   return hNGIOlib;
 }
 

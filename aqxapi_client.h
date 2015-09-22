@@ -6,6 +6,7 @@
 
 /* Maximum number of characters for an OAuth2 token */
 #define OAUTH2_TOKEN_MAXLEN 100
+#define SYSTEM_UID_MAXLEN 48
 
 /*
  * These are the measurement entities that are stored
@@ -27,8 +28,9 @@ struct aqx_system_entries {
 };
 
 struct aqx_client_options {
-  const char *system_uid; /* System's UID */
-  const char *oauth2_refresh_token; /* OAuth2 refresh token from Google */
+  int service_port;
+  char system_uid[SYSTEM_UID_MAXLEN + 1]; /* System's UID */
+  char oauth2_refresh_token[OAUTH2_TOKEN_MAXLEN + 1]; /* OAuth2 refresh token from Google */
 };
 
 extern int aqx_client_init(struct aqx_client_options *options);

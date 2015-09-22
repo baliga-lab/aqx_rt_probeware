@@ -5,7 +5,6 @@
  * TODO: Make this part of aqxclient as its frontend, for reusability
  */
 #include "config_server.h"
-#include "aqxapi_client.h"
 #include "simple_templates.h"
 
 #include <stdio.h>
@@ -20,7 +19,7 @@
 #define SYSTEM_UID_PREFIX    "system_uid="
 #define SERVICE_PORT_PREFIX  "service_port="
 
-static struct aqxclient_config client_config;
+static struct aqx_client_options client_config;
 
 struct token_post_data {
   struct MHD_PostProcessor *pp;
@@ -225,7 +224,7 @@ static int answer_to_connection (void *cls, struct MHD_Connection *connection,
   return MHD_NO;
 }
 
-static void parse_config_line(struct aqxclient_config *cfg, char *line)
+static void parse_config_line(struct aqx_client_options *cfg, char *line)
 {
   /* remove trailing white space */
   int line_end = strlen(line);
@@ -238,7 +237,8 @@ static void parse_config_line(struct aqxclient_config *cfg, char *line)
   if (!strncmp(line, SYSTEM_UID_PREFIX, strlen(SYSTEM_UID_PREFIX))) {
     strncpy(cfg->system_uid, &line[strlen(SYSTEM_UID_PREFIX)], sizeof(cfg->system_uid));
   } else if (!strncmp(line, REFRESH_TOKEN_PREFIX, strlen(REFRESH_TOKEN_PREFIX))) {
-    strncpy(cfg->refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)], sizeof(cfg->refresh_token));
+    strncpy(cfg->oauth2_refresh_token, &line[strlen(REFRESH_TOKEN_PREFIX)],
+            sizeof(cfg->oauth2_refresh_token));
   } else if (!strncmp(line, SERVICE_PORT_PREFIX, strlen(SERVICE_PORT_PREFIX))) {
     LOG_DEBUG("parsing int at: '%s'\n", &line[strlen(SERVICE_PORT_PREFIX)]);
     cfg->service_port = atoi(&line[strlen(SERVICE_PORT_PREFIX)]);
@@ -249,7 +249,7 @@ static void parse_config_line(struct aqxclient_config *cfg, char *line)
  * Public API
  **********************************************************************/
 
-struct aqxclient_config *read_config()
+struct aqx_client_options *read_config()
 {
   FILE *fp = fopen("config.ini", "r");
   static char line_buffer[200];
@@ -260,7 +260,7 @@ struct aqxclient_config *read_config()
       parse_config_line(&client_config, line_buffer);
     }
     LOG_DEBUG("system_uid: '%s', refresh_token: '%s'\n",
-              client_config.system_uid, client_config.refresh_token);
+              client_config.system_uid, client_config.oauth2_refresh_token);
     fclose(fp);
   }
   return &client_config;

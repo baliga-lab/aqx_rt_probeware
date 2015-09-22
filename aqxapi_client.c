@@ -282,7 +282,7 @@ static struct aqx_system_entries *get_systems(const char *access_token)
     struct curl_slist *chunk = NULL;
 
     memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_SYSTEMS_URL, config.system_uid);
+    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_SYSTEMS_URL);
 
     /* Verification header + Content-Type */
     sprintf(auth_header, "Authorization: Bearer %s", access_token);
