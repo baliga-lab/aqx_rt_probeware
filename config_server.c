@@ -2,6 +2,7 @@
  *
  * Description: Configuration is handled here, the user can modify the
  * ------------ settings through the embedded web interface
+ * TODO: Make this part of aqxclient as its frontend, for reusability
  */
 #include "config_server.h"
 #include "aqxapi_client.h"
@@ -23,6 +24,11 @@
 #define SERVICE_PORT_PREFIX  "service_port="
 
 static struct aqxclient_config client_config;
+
+struct token_post_data {
+  struct MHD_PostProcessor *pp;
+  char token[OAUTH2_TOKEN_MAXLEN + 1];
+};
 
 /*
  * Handle the HTTP server requests here.
@@ -140,12 +146,10 @@ static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *
                         uint64_t off, size_t size)
 {
   LOG_DEBUG("ITERATE_POST\n");
-  if (!strcmp("access-token", key)) {
-    const char *refresh_token = aqx_get_refresh_token(data);
-    if (refresh_token) {
-      LOG_DEBUG("submitted token: '%s', refresh token: '%s'\n", data, refresh_token);
-      /* copy the valid token into the configuration */
-    }
+  struct token_post_data *post_data = (struct token_post_data *) coninfo_cls;
+
+  if (post_data && !strcmp("access-token", key)) {
+    strncpy(post_data->token, data, OAUTH2_TOKEN_MAXLEN);
     return MHD_NO;
   }
   return MHD_YES;
@@ -163,23 +167,36 @@ static int handle_post(struct MHD_Connection *connection,
 {
   struct MHD_Response *response;
   /* user data is currently post processor */
-  struct MHD_PostProcessor *pp = *con_cls;
+  struct token_post_data *post_data = *con_cls;
   int ret = 0;
   if (!strcmp("/enter-token", url)) {
-    if (!pp) {
-      pp = MHD_create_post_processor(connection, 1024, iterate_post, NULL);
-      *con_cls = (void *) pp;
+    if (!post_data) {
+      post_data = (struct token_post_data *) malloc(sizeof(struct token_post_data));
+      if (post_data) {
+        post_data->pp = MHD_create_post_processor(connection, 1024, iterate_post, post_data);
+        *con_cls = (void *) post_data;
+      }
       return MHD_YES;
     } else {
       if (*upload_data_size) {
-        MHD_post_process(pp, upload_data, *upload_data_size);
+        MHD_post_process(post_data->pp, upload_data, *upload_data_size);
         /* setting upload data to 0 says "processed" */
         *upload_data_size = 0;
         return MHD_YES;
       } else {
         /* No more data */
         /* We implement the PRG pattern here (POST-Redirect-GET) */
-        MHD_destroy_post_processor(pp);
+        const char *refresh_token;
+
+        LOG_DEBUG("ACCESS TOKEN obtained: %s\n", post_data->token);
+        refresh_token = aqx_get_refresh_token(post_data->token);
+        if (refresh_token) {
+          LOG_DEBUG("refresh token: '%s'\n", refresh_token);
+          /* copy the valid token into the configuration */
+        }
+
+        MHD_destroy_post_processor(post_data->pp);
+        free(post_data);
 
         response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);      
         MHD_add_response_header(response, "Location", "/");

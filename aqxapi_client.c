@@ -15,7 +15,6 @@
 #define REFRESH_PARAMS "refresh_token=%s&client_id=%s&client_secret=%s&grant_type=refresh_token"
 #define GET_TOKEN_PARAMS "code=%s&client_id=%s&client_secret=%s&redirect_uri=%s&grant_type=authorization_code"
 
-#define ACCESS_TOKEN_MAXLEN 100
 #define AUTH_HEADER_MAXLEN 200
 #define REFRESH_POST_PARAMS_MAXLEN 1024
 #define JSON_BUFFER_SIZE 2048
@@ -35,7 +34,7 @@ static struct aqx_measurement measurement_data[MAX_MEASUREMENTS];
 /* Google OAuth communcation state */
 static char refresh_post_params[REFRESH_POST_PARAMS_MAXLEN];
 static char auth_header[AUTH_HEADER_MAXLEN];
-static char access_token[ACCESS_TOKEN_MAXLEN];
+static char access_token[OAUTH2_TOKEN_MAXLEN];
 
 /* JSON buffer*/
 static int json_count = 0;
@@ -95,7 +94,7 @@ const char *aqx_get_refresh_token(const char *initial_code)
 
         if (json_object_object_get_ex(obj, "refresh_token", &refresh_token_obj)) {
           const char *recvd_token = json_object_get_string(refresh_token_obj);
-          strncpy(access_token, recvd_token, ACCESS_TOKEN_MAXLEN);
+          strncpy(access_token, recvd_token, OAUTH2_TOKEN_MAXLEN);
           retval = access_token;
         } else {
           LOG_DEBUG("no refresh token found\n");
@@ -148,7 +147,7 @@ static const char *get_access_token(const char *refresh_token)
 
         if (json_object_object_get_ex(obj, "access_token", &access_token_obj)) {
           const char *recvd_token = json_object_get_string(access_token_obj);
-          strncpy(access_token, recvd_token, ACCESS_TOKEN_MAXLEN);
+          strncpy(access_token, recvd_token, OAUTH2_TOKEN_MAXLEN);
           retval = access_token;
         } else {
           LOG_DEBUG("no access token found\n");

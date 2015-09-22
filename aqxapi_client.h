@@ -4,6 +4,9 @@
 
 #include <time.h>
 
+/* Maximum number of characters for an OAuth2 token */
+#define OAUTH2_TOKEN_MAXLEN 100
+
 /*
  * These are the measurement entities that are stored
  * and submitted.
