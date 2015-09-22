@@ -32,8 +32,7 @@
 
 extern "C" {
 #include "aqxapi_client.h"
-#include "simple_templates.h"
-#include "config_server.h"
+#include <microhttpd.h>
 }
 
 #define MAX_NUM_MEASUREMENTS 100

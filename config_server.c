@@ -4,13 +4,14 @@
  * ------------ settings through the embedded web interface
  * TODO: Make this part of aqxclient as its frontend, for reusability
  */
-#include "config_server.h"
+#include "aqxapi_client.h"
 #include "simple_templates.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <microhttpd.h>
 
 #define HTDOCS_PREFIX "htdocs"
 /* Length of the opening and closing option tags <option "..."></option> */

@@ -52,6 +52,13 @@ extern int aqx_add_measurement(struct aqx_measurement *m);
 extern void aqx_client_flush();
 extern void aqx_client_cleanup();
 
+/* read config and initialize the api client library  */
+extern struct aqx_client_options *aqx_client_init();
+
+/* start the web server for user configuration */
+extern struct MHD_Daemon *start_webserver();
+
+
 #ifdef DEBUG
 #define LOG_DEBUG(...) fprintf(stderr, __VA_ARGS__)
 #else 
