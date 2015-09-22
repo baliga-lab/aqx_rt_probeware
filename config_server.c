@@ -38,7 +38,7 @@ struct system_post_data {
 /* Store updated configuration */
 static int save_configuration()
 {
-  FILE *fp = fopen("new.ini", "w");
+  FILE *fp = fopen(INI_PATH, "w");
   if (fp) {
     fprintf(fp, "refresh_token=%s\nsystem_uid=%s\nservice_port=%d\n",
             client_config.oauth2_refresh_token,
@@ -127,18 +127,22 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
         buffersize += strlen(entries->entries[i].name);
       }
 
-      option_buffer = calloc(buffersize + 2, sizeof(char));
+      /* option buffer is the space used by the tags, and possibly
+       a selected attribute */
+      option_buffer = calloc(buffersize + 12, sizeof(char));
+      stemp_dict_put(dict, "current_system", "none");
       for (i = 0; i < entries->num_entries; i++) {
         strcat(option_buffer, "<option value=\"");
         strcat(option_buffer, entries->entries[i].uid);
-        strcat(option_buffer, "\">");
+        strcat(option_buffer, "\"");
+        if (!strcmp(client_config.system_uid, entries->entries[i].uid)) {
+          stemp_dict_put(dict, "current_system", entries->entries[i].name);
+          strcat(option_buffer, " selected");
+        }
+        strcat(option_buffer, ">");
         strcat(option_buffer, entries->entries[i].name);
         strcat(option_buffer, "</option>");
       }
-      /*
-      if (strlen(client_options.system_uid)) {
-      }*/
-      stemp_dict_put(dict, "current_system", "none");
       stemp_dict_put(dict, "system_options", option_buffer);
       aqx_free_systems(entries);
       free(option_buffer);

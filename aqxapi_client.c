@@ -313,7 +313,6 @@ static struct aqx_system_entries *get_systems(const char *access_token)
       obj = json_tokener_parse(json_buffer);
       json_count = 0;
       if (json_object_is_type(obj, json_type_object)) {
-        LOG_DEBUG("Yes !!!\n");
         if (json_object_object_get_ex(obj, "systems", &system_list)) {
           int len = json_object_array_length(system_list), slen;
           if (len) {
@@ -321,7 +320,6 @@ static struct aqx_system_entries *get_systems(const char *access_token)
             entries->num_entries = len;
             entries->entries = calloc(len, sizeof(struct aqx_system_info));
 
-            LOG_DEBUG("Number of systems: %d\n", len);
             for (i = 0; i < len; i++) {
               system = json_object_array_get_idx(system_list, i);
               json_object_object_get_ex(system, "uid", &s);
@@ -337,9 +335,6 @@ static struct aqx_system_entries *get_systems(const char *access_token)
               entries->entries[i].name = calloc(slen + 1, sizeof(char));
               strcpy(entries->entries[i].name, name);
               entries->entries[i].name[slen] = 0;
-
-              LOG_DEBUG("System UID: '%s', Name: '%s'\n",
-                        entries->entries[i].uid, entries->entries[i].name);
             }
           }
         }
