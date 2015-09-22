@@ -19,6 +19,8 @@
 #define SYSTEM_UID_PREFIX    "system_uid="
 #define SERVICE_PORT_PREFIX  "service_port="
 
+#define INI_PATH "config.ini"
+
 static struct aqx_client_options client_config;
 
 struct token_post_data {
@@ -140,9 +142,7 @@ static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *
                         const char *transfer_encoding, const char *data, 
                         uint64_t off, size_t size)
 {
-  LOG_DEBUG("ITERATE_POST\n");
   struct token_post_data *post_data = (struct token_post_data *) coninfo_cls;
-
   if (post_data && !strcmp("access-token", key)) {
     strncpy(post_data->token, data, OAUTH2_TOKEN_MAXLEN);
     return MHD_NO;
@@ -249,9 +249,9 @@ static void parse_config_line(struct aqx_client_options *cfg, char *line)
  * Public API
  **********************************************************************/
 
-struct aqx_client_options *read_config()
+struct aqx_client_options *aqx_client_init()
 {
-  FILE *fp = fopen("config.ini", "r");
+  FILE *fp = fopen(INI_PATH, "r");
   static char line_buffer[200];
 
   if (fp) {
@@ -263,6 +263,10 @@ struct aqx_client_options *read_config()
               client_config.system_uid, client_config.oauth2_refresh_token);
     fclose(fp);
   }
+  aqx_client_update_refresh_token(client_config.oauth2_refresh_token);
+  aqx_client_update_system(client_config.system_uid);
+
+  aqx_client_init_api();
   return &client_config;
 }
 

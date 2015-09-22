@@ -33,11 +33,20 @@ struct aqx_client_options {
   char oauth2_refresh_token[OAUTH2_TOKEN_MAXLEN + 1]; /* OAuth2 refresh token from Google */
 };
 
-extern int aqx_client_init(struct aqx_client_options *options);
+/* 
+   Private API
+   don't call these functions directly, these are called by the config_server
+   after a user configuration update
+*/
+extern int aqx_client_init_api();
+extern void aqx_client_update_refresh_token(const char *token);
+extern void aqx_client_update_system(const char *system_uid);
+
 extern struct aqx_system_entries *aqx_get_systems();
 extern void aqx_free_systems(struct aqx_system_entries *entries);
 extern const char *aqx_get_refresh_token(const char *initial_code);
 
+/* Public API */
 extern int aqx_add_measurement(struct aqx_measurement *m);
 /* force send everything available */
 extern void aqx_client_flush();

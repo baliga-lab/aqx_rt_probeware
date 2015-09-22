@@ -115,7 +115,6 @@ NGIO_LIBRARY_HANDLE init_system()
 {
 	gtype_uint16 goio_minor, goio_major, ngio_minor, ngio_major;
   NGIO_LIBRARY_HANDLE hNGIOlib;
-  struct aqx_client_options *cfg = read_config();
 
 	GoIO_Init();
 	GoIO_GetDLLVersion(&goio_major, &goio_minor);
@@ -125,7 +124,7 @@ NGIO_LIBRARY_HANDLE init_system()
 	LOG_DEBUG("aqx_client V0.001 - (c) 2015 Institute for Systems Biology\nGoIO library version %d.%d\nNGIO library version %d.%d\n",
           goio_major, goio_minor, ngio_major, ngio_minor);
 
-  aqx_client_init(cfg);
+  aqx_client_init();
   return hNGIOlib;
 }
 

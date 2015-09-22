@@ -24,7 +24,9 @@
 #define SEND_INTERVAL_SECS 60
 
 /* Module init configuration */
-static struct aqx_client_options config;
+static const char *oauth2_refresh_token;
+static const char *system_uid;
+
 static time_t last_submission_time;
 
 /*
@@ -178,7 +180,7 @@ static int submit_measurements(const char *access_token, const char *json_str)
     struct curl_slist *chunk = NULL;
 
     memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_MEASUREMENTS_URL, config.system_uid);
+    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_MEASUREMENTS_URL, system_uid);
 
     /* Verification header + Content-Type */
     sprintf(auth_header, "Authorization: Bearer %s", access_token);
@@ -358,17 +360,17 @@ static struct aqx_system_entries *get_systems(const char *access_token)
  *
  ***************************************************************************/
 
-int aqx_client_init(struct aqx_client_options *options)
+int aqx_client_init_api()
 {
-  memcpy(&config, options, sizeof(struct aqx_client_options));
   num_measurements = 0;
-
   /* reset timer */
   time(&last_submission_time);
-
   curl_global_init(CURL_GLOBAL_ALL);
   return 1;
 }
+
+void aqx_client_update_refresh_token(const char *token) { oauth2_refresh_token = token; }
+void aqx_client_update_system(const char *uid) { system_uid = uid; }
 
 void aqx_client_cleanup()
 {
@@ -383,7 +385,7 @@ void aqx_client_flush()
     json_str = json_object_get_string(arr);
     LOG_DEBUG("Submit: %s\n", json_str);
 
-    access_token = get_access_token(config.oauth2_refresh_token);
+    access_token = get_access_token(oauth2_refresh_token);
     if (access_token) {
       LOG_DEBUG("received access token: '%s'\n", access_token);
       submit_measurements(access_token, json_str);
@@ -412,7 +414,7 @@ int aqx_add_measurement(struct aqx_measurement *m)
 
 struct aqx_system_entries *aqx_get_systems()
 {
-  const char *access_token = get_access_token(config.oauth2_refresh_token);
+  const char *access_token = get_access_token(oauth2_refresh_token);
   if (access_token) {
     LOG_DEBUG("received access token: '%s'\n", access_token);
     return get_systems(access_token);
