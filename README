@@ -1,2 +1,8 @@
+## Building
+
 autoreconf -v --install
 make
+
+## TODO
+
+- batch up data on connection error

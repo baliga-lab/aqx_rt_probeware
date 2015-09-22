@@ -35,6 +35,12 @@ extern "C" {
 #include <microhttpd.h>
 }
 
+/* Collect measurements for this amount of time */
+#define MEASURE_INTERVAL     1000
+
+/* Idle this time between measurements */
+#define IDLE_INTERVAL        60000
+
 #define MAX_NUM_MEASUREMENTS 100
 
 /* Remove or comment for production */
@@ -147,7 +153,7 @@ void measure()
       if (ngio_devices[j].connected) status = NGIO_SendIORequest(&ngio_devices[j]);
     }
 
-    OSSleep(1000); // wait for a second
+    OSSleep(MEASURE_INTERVAL);
     GoIO_CollectMeasurements(&measurement);
 
     for (j = 0; j < num_ngio_devices; j++) {
@@ -161,9 +167,6 @@ void measure()
     time(&measurement.time);
     aqx_add_measurement(&measurement);
 #endif
-  } else {
-    OSSleep(1000); // wait for a second
-    /* LOG_DEBUG("no devices connected (%d), don't submit\n", any_devices_connected); */
   }
 }
 
@@ -180,11 +183,6 @@ int main(int argc, char* argv[])
   NGIO_LIBRARY_HANDLE hNGIOlib;
 
   hNGIOlib = init_system();
-
-  // Open all connected GOIO devices
-  GoIO_OpenAllConnectedDevices();
-  NGIO_OpenAllConnectedDevices(hNGIOlib);
-
 
   LOG_DEBUG("starting the HTTP daemon...");
   daemon = start_webserver();
@@ -216,7 +214,19 @@ int main(int argc, char* argv[])
     OSSleep(1000); // sync time just in case
 
     while (!should_exit) {
+      // Open all connected GOIO devices
+      GoIO_OpenAllConnectedDevices();
+      NGIO_OpenAllConnectedDevices(hNGIOlib);
+
       measure();
+
+      /* cleanup here */
+      GoIO_CloseAllConnectedDevices();
+      for (i = 0; i < num_ngio_devices; i++) {
+        if (ngio_devices[i].hDevice) NGIO_Device_Close(ngio_devices[i].hDevice);
+      }
+      /* Wait before taking a new round of measurements */
+      OSSleep(IDLE_INTERVAL);
     }
 
     // Make sure we did not lose any measurements
@@ -227,12 +237,6 @@ int main(int argc, char* argv[])
 
     LOG_DEBUG("HTTP daemon stopped...");
     MHD_stop_daemon(daemon);
-  }
-
-  /* cleanup here */
-  GoIO_CloseAllConnectedDevices();
-  for (i = 0; i < num_ngio_devices; i++) {
-    if (ngio_devices[i].hDevice) NGIO_Device_Close(ngio_devices[i].hDevice);
   }
 
   cleanup_system(hNGIOlib);
