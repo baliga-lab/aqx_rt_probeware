@@ -352,7 +352,8 @@ struct aqx_client_options *aqx_client_init()
     LOG_DEBUG("system_uid: '%s', refresh_token: '%s'\n",
               client_config.system_uid, client_config.oauth2_refresh_token);
     fclose(fp);
-  } else {
+  }
+  if (!client_config.service_port) {
     client_config.service_port = DEFAULT_SERVICE_PORT;
   }
   aqx_client_update_refresh_token(client_config.oauth2_refresh_token);
@@ -363,6 +364,7 @@ struct aqx_client_options *aqx_client_init()
 
 struct MHD_Daemon *start_webserver()
 {
+  LOG_DEBUG("starting server on port: %d\n", client_config.service_port);
   return MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, client_config.service_port, NULL, NULL,
                           &answer_to_connection, NULL,
                           MHD_OPTION_NOTIFY_COMPLETED, &request_completed, NULL,

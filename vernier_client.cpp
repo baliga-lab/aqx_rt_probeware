@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <memory.h>
-#include <unistd.h>
 #include <stdint.h>
 #include <signal.h>
 
@@ -20,6 +19,9 @@
 #define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
 #include <windows.h>
 #pragma warning(disable: 4996)
+#else
+/* Windows don't care about standards */
+#include <unistd.h>
 #endif
 #ifdef TARGET_OS_LINUX
 #include <sys/time.h>
