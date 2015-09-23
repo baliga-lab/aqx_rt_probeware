@@ -87,7 +87,7 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
   }
 
   /* open the file, regardless if static or template */
-  fp = fopen(filepath, "r");
+  fp = fopen(filepath, "rb");
   if (fp) {
     fseek(fp, 0L, SEEK_END);
     file_size = ftell(fp);
@@ -99,11 +99,18 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
 
   /* Directly serve up the response from a file */
   if (is_static) {
-    /* destroy will auto close the file, don't call fclose() !!!! */
+    /* Note: previously I used MHD_create_response_from_fd(). It turns out
+       that this function does not properly work on MS Windows, so instead,
+       we are now using MHD_create_response_from_buffer() instead. */
+    char *data = (char *) malloc(file_size);
     LOG_DEBUG("serve static (from '%s'), size: %d\n", filepath, (int) file_size);
-    response = MHD_create_response_from_fd(file_size, fileno(fp));
-    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-    MHD_destroy_response(response);
+    if (fread(data, sizeof(char), file_size, fp) == file_size) {
+      response = MHD_create_response_from_buffer(file_size, data, MHD_RESPMEM_MUST_FREE);
+      ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+      MHD_destroy_response(response);
+    } else {
+      /* error (TODO handle) */
+    }
   } else {
     /* dynamic template, currently this is only the system setting  */
     int i;
