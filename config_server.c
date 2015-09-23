@@ -2,7 +2,12 @@
  *
  * Description: Configuration is handled here, the user can modify the
  * ------------ settings through the embedded web interface
- * TODO: Make this part of aqxclient as its frontend, for reusability
+ * Note: the latest binary build of the libmicrohttpd library (0.9.35-w32)
+ * has issues with MHD_create_response_from_fd(), furthermore it has issues
+ * when using MHD_create_response_from_buffer() in combination with
+ * MHD_RESPMEM_MUST_FREE. We work around the issue by using
+ * MHD_create_response_from_buffer() only with the MHD_RESPMEM_MUST_COPY
+ * and MHD_RESPMEM_PERSISTENT flags.
  */
 #include "aqxapi_client.h"
 #include "simple_templates.h"
@@ -79,9 +84,9 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
 
   /* construct the path to the static file */
   if (is_static) {
-    int pathlen = strlen(url) + strlen(HTDOCS_PREFIX);
-    path_buffer = (char *) calloc(pathlen + 1, sizeof(char));
-    snprintf(path_buffer, pathlen + 1, "%s%s", HTDOCS_PREFIX, url);
+    int pathlen = strlen(url) + strlen(HTDOCS_PREFIX) + 1;
+    path_buffer = (char *) calloc(pathlen, sizeof(char));
+    snprintf(path_buffer, pathlen, "%s%s", HTDOCS_PREFIX, url);
     LOG_DEBUG("PATH BUFFER: '%s' (from url '%s')\n", path_buffer, url);
     filepath = path_buffer;
   }
@@ -105,12 +110,13 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
     char *data = (char *) malloc(file_size);
     LOG_DEBUG("serve static (from '%s'), size: %d\n", filepath, (int) file_size);
     if (fread(data, sizeof(char), file_size, fp) == file_size) {
-      response = MHD_create_response_from_buffer(file_size, data, MHD_RESPMEM_MUST_FREE);
+      response = MHD_create_response_from_buffer(file_size, data, MHD_RESPMEM_MUST_COPY);
       ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
       MHD_destroy_response(response);
     } else {
       /* error (TODO handle) */
     }
+    free(data);
     fclose(fp);
   } else {
     /* dynamic template, currently this is only the system setting  */
@@ -156,9 +162,9 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
       free(option_buffer);
       template_in = (char *) calloc(file_size + 1, sizeof(char));
       if (fread(template_in, sizeof(char), file_size, fp) == file_size) {
-        /* destroy will auto-free the buffer */
         char *result = stemp_apply_template(template_in, dict);
-        response = MHD_create_response_from_buffer(strlen(result), result, MHD_RESPMEM_MUST_FREE);
+        response = MHD_create_response_from_buffer(strlen(result), result, MHD_RESPMEM_MUST_COPY);
+        free(result);
         ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
         MHD_destroy_response(response);
       }
