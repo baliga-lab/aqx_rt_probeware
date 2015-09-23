@@ -111,6 +111,7 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
     } else {
       /* error (TODO handle) */
     }
+    fclose(fp);
   } else {
     /* dynamic template, currently this is only the system setting  */
     int i;

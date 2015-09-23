@@ -122,8 +122,8 @@ const char *aqx_get_refresh_token(const char *initial_code)
 */
 static const char *get_access_token(const char *refresh_token)
 {
-  CURL *curl;
-  CURLcode result;
+  CURL *curl = NULL;
+  CURLcode result = 0;
   const char *retval = NULL;
 
   curl = curl_easy_init();
@@ -142,13 +142,13 @@ static const char *get_access_token(const char *refresh_token)
       LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
       /* TODO: connection error - buffer it up */
     } else {
-      json_object *obj;
+      json_object *obj = NULL;
       obj = json_tokener_parse(json_buffer);
       json_count = 0;
 
       /* evaluate data */
       if (json_object_is_type(obj, json_type_object)) {
-        struct json_object *access_token_obj;
+        struct json_object *access_token_obj = NULL;
 
         if (json_object_object_get_ex(obj, "access_token", &access_token_obj)) {
           const char *recvd_token = json_object_get_string(access_token_obj);
@@ -374,8 +374,9 @@ void aqx_client_cleanup()
 
 void aqx_client_flush()
 {
-    struct json_object *arr;
-    const char *json_str, *access_token;
+    struct json_object *arr = NULL;
+    const char *json_str = NULL, *access_token = NULL;
+
     arr = serialize_measurements();
     json_str = json_object_get_string(arr);
     LOG_DEBUG("Submit: %s\n", json_str);
