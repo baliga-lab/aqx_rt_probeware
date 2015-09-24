@@ -50,14 +50,14 @@ static char json_buffer[JSON_BUFFER_SIZE];
  */
 static size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
-  size_t num_bytes = size * nmemb;
+    size_t num_bytes = size * nmemb;
 
-  /* ensure the callback will not stomp over buffer boundaries */
-  if (json_count + num_bytes >= JSON_BUFFER_SIZE) return 0;
+    /* ensure the callback will not stomp over buffer boundaries */
+    if (json_count + num_bytes >= JSON_BUFFER_SIZE) return 0;
 
-  memcpy(&json_buffer[json_count], ptr, num_bytes);
-  json_count += num_bytes;
-  return num_bytes;
+    memcpy(&json_buffer[json_count], ptr, num_bytes);
+    json_count += num_bytes;
+    return num_bytes;
 }
 
 /*************************************************************************************
@@ -69,47 +69,47 @@ static size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdat
 */
 const char *aqx_get_refresh_token(const char *initial_code)
 {
-  CURL *curl;
-  CURLcode result;
-  const char *retval = NULL;
+    CURL *curl;
+    CURLcode result;
+    const char *retval = NULL;
 
-  curl = curl_easy_init();
+    curl = curl_easy_init();
 
-  sprintf(refresh_post_params, GET_TOKEN_PARAMS, initial_code,
-          GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
-  if (curl) {
-    memset(json_buffer, 0, sizeof(json_buffer));
-    curl_easy_setopt(curl, CURLOPT_URL, GOOGLE_OAUTH2_ENDPOINT_URL);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, refresh_post_params);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
-    result = curl_easy_perform(curl);
+    sprintf(refresh_post_params, GET_TOKEN_PARAMS, initial_code,
+            GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+    if (curl) {
+        memset(json_buffer, 0, sizeof(json_buffer));
+        curl_easy_setopt(curl, CURLOPT_URL, GOOGLE_OAUTH2_ENDPOINT_URL);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, refresh_post_params);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
+        result = curl_easy_perform(curl);
 
-    if (result != CURLE_OK) {
-      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
-      /* TODO: connection error - buffer it up */
-    } else {
-      json_object *obj;
-      obj = json_tokener_parse(json_buffer);
-      json_count = 0;
-
-      /* evaluate data */
-      if (json_object_is_type(obj, json_type_object)) {
-        struct json_object *refresh_token_obj;
-
-        if (json_object_object_get_ex(obj, "refresh_token", &refresh_token_obj)) {
-          const char *recvd_token = json_object_get_string(refresh_token_obj);
-          strncpy(access_token, recvd_token, OAUTH2_TOKEN_MAXLEN);
-          retval = access_token;
+        if (result != CURLE_OK) {
+            LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+            /* TODO: connection error - buffer it up */
         } else {
-          LOG_DEBUG("no refresh token found\n");
+            json_object *obj;
+            obj = json_tokener_parse(json_buffer);
+            json_count = 0;
+
+            /* evaluate data */
+            if (json_object_is_type(obj, json_type_object)) {
+                struct json_object *refresh_token_obj;
+
+                if (json_object_object_get_ex(obj, "refresh_token", &refresh_token_obj)) {
+                    const char *recvd_token = json_object_get_string(refresh_token_obj);
+                    strncpy(access_token, recvd_token, OAUTH2_TOKEN_MAXLEN);
+                    retval = access_token;
+                } else {
+                    LOG_DEBUG("no refresh token found\n");
+                }
+            }
+            json_object_put(obj);
         }
-      }
-      json_object_put(obj);
+        curl_easy_cleanup(curl);
     }
-    curl_easy_cleanup(curl);
-  }
-  return retval;
+    return retval;
 }
 
 /*************************************************************************************
@@ -122,47 +122,47 @@ const char *aqx_get_refresh_token(const char *initial_code)
 */
 static const char *get_access_token(const char *refresh_token)
 {
-  CURL *curl = NULL;
-  CURLcode result = 0;
-  const char *retval = NULL;
+    CURL *curl = NULL;
+    CURLcode result = 0;
+    const char *retval = NULL;
 
-  curl = curl_easy_init();
+    curl = curl_easy_init();
 
-  sprintf(refresh_post_params, REFRESH_PARAMS, refresh_token,
-          GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
-  if (curl) {
-    memset(json_buffer, 0, sizeof(json_buffer));
-    curl_easy_setopt(curl, CURLOPT_URL, GOOGLE_OAUTH2_ENDPOINT_URL);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, refresh_post_params);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
-    result = curl_easy_perform(curl);
+    sprintf(refresh_post_params, REFRESH_PARAMS, refresh_token,
+            GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+    if (curl) {
+        memset(json_buffer, 0, sizeof(json_buffer));
+        curl_easy_setopt(curl, CURLOPT_URL, GOOGLE_OAUTH2_ENDPOINT_URL);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, refresh_post_params);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
+        result = curl_easy_perform(curl);
 
-    if (result != CURLE_OK) {
-      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
-      /* TODO: connection error - buffer it up */
-    } else {
-      json_object *obj = NULL;
-      obj = json_tokener_parse(json_buffer);
-      json_count = 0;
-
-      /* evaluate data */
-      if (json_object_is_type(obj, json_type_object)) {
-        struct json_object *access_token_obj = NULL;
-
-        if (json_object_object_get_ex(obj, "access_token", &access_token_obj)) {
-          const char *recvd_token = json_object_get_string(access_token_obj);
-          strncpy(access_token, recvd_token, OAUTH2_TOKEN_MAXLEN);
-          retval = access_token;
+        if (result != CURLE_OK) {
+            LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+            /* TODO: connection error - buffer it up */
         } else {
-          LOG_DEBUG("no access token found\n");
+            json_object *obj = NULL;
+            obj = json_tokener_parse(json_buffer);
+            json_count = 0;
+
+            /* evaluate data */
+            if (json_object_is_type(obj, json_type_object)) {
+                struct json_object *access_token_obj = NULL;
+
+                if (json_object_object_get_ex(obj, "access_token", &access_token_obj)) {
+                    const char *recvd_token = json_object_get_string(access_token_obj);
+                    strncpy(access_token, recvd_token, OAUTH2_TOKEN_MAXLEN);
+                    retval = access_token;
+                } else {
+                    LOG_DEBUG("no access token found\n");
+                }
+            }
+            json_object_put(obj);
         }
-      }
-      json_object_put(obj);
+        curl_easy_cleanup(curl);
     }
-    curl_easy_cleanup(curl);
-  }
-  return retval;
+    return retval;
 }
 
 /*************************************************************************************
@@ -170,91 +170,91 @@ static const char *get_access_token(const char *refresh_token)
  *************************************************************************************/
 static int submit_measurements(const char *access_token, const char *json_str)
 {
-  CURL *curl;
-  CURLcode result;
-  int retval = 0;
-  static char app_url_buffer[200];
+    CURL *curl;
+    CURLcode result;
+    int retval = 0;
+    static char app_url_buffer[200];
 
-  curl = curl_easy_init();
-  if (curl) {
-    struct curl_slist *chunk = NULL;
+    curl = curl_easy_init();
+    if (curl) {
+        struct curl_slist *chunk = NULL;
 
-    memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_MEASUREMENTS_URL, system_uid);
+        memset(json_buffer, 0, sizeof(json_buffer));
+        snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_MEASUREMENTS_URL, system_uid);
 
-    /* Verification header + Content-Type */
-    sprintf(auth_header, "Authorization: Bearer %s", access_token);
-    chunk = curl_slist_append(chunk, auth_header);
-    chunk = curl_slist_append(chunk, "Content-Type: application/json");
+        /* Verification header + Content-Type */
+        sprintf(auth_header, "Authorization: Bearer %s", access_token);
+        chunk = curl_slist_append(chunk, auth_header);
+        chunk = curl_slist_append(chunk, "Content-Type: application/json");
 
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
-    curl_easy_setopt(curl, CURLOPT_URL, app_url_buffer);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+        curl_easy_setopt(curl, CURLOPT_URL, app_url_buffer);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
 
 #ifdef SKIP_PEER_VERIFICATION
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 #endif
-    result = curl_easy_perform(curl);
+        result = curl_easy_perform(curl);
 
-    if (result != CURLE_OK) {
-      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
-      /* TODO: Handle submit error
-         maybe retry ? After that, store in a file */
-    } else {
-      json_object *obj, *error_obj;
-      obj = json_tokener_parse(json_buffer);
-      json_count = 0;
+        if (result != CURLE_OK) {
+            LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+            /* TODO: Handle submit error
+               maybe retry ? After that, store in a file */
+        } else {
+            json_object *obj, *error_obj;
+            obj = json_tokener_parse(json_buffer);
+            json_count = 0;
 
-      if (json_object_object_get_ex(obj, "error", &error_obj)) {
-        const char *error_msg = json_object_get_string(error_obj);
-        LOG_DEBUG("Error: '%s'\n", error_msg);
-      } else {
-        LOG_DEBUG("everything ok: '%s'\n", json_object_get_string(obj));
-        retval = 1;
-      }
-      json_object_put(obj);
+            if (json_object_object_get_ex(obj, "error", &error_obj)) {
+                const char *error_msg = json_object_get_string(error_obj);
+                LOG_DEBUG("Error: '%s'\n", error_msg);
+            } else {
+                LOG_DEBUG("everything ok: '%s'\n", json_object_get_string(obj));
+                retval = 1;
+            }
+            json_object_put(obj);
+        }
+
+        curl_easy_cleanup(curl);
+        curl_slist_free_all(chunk);
     }
-
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(chunk);
-  }
-  return retval;
+    return retval;
 }
 
 /* serialize a measurement struct into a json_object */
 static json_object *to_json(struct aqx_measurement *m)
 {
-  static char time_buffer[20];
-  struct json_object *obj = json_object_new_object();
-  struct tm *tstruct = localtime(&m->time);
-  /* mm/dd/yyyy HH:MM:SS */
-  sprintf(time_buffer, "%02d/%02d/%04d %02d:%02d:%02d",
-          tstruct->tm_mon + 1, tstruct->tm_mday, 1900 + tstruct->tm_year,
-          tstruct->tm_hour, tstruct->tm_min, tstruct->tm_sec);
+    static char time_buffer[20];
+    struct json_object *obj = json_object_new_object();
+    struct tm *tstruct = localtime(&m->time);
+    /* mm/dd/yyyy HH:MM:SS */
+    sprintf(time_buffer, "%02d/%02d/%04d %02d:%02d:%02d",
+            tstruct->tm_mon + 1, tstruct->tm_mday, 1900 + tstruct->tm_year,
+            tstruct->tm_hour, tstruct->tm_min, tstruct->tm_sec);
 
-  json_object_object_add(obj, "time", json_object_new_string(time_buffer));
-  json_object_object_add(obj, "temp", json_object_new_double(m->temperature));
-  json_object_object_add(obj, "ph", json_object_new_double(m->ph));
-  json_object_object_add(obj, "o2", json_object_new_double(m->o2));
-  json_object_object_add(obj, "light", json_object_new_double(m->light));
-  json_object_object_add(obj, "ammonium", json_object_new_double(m->ammonium));
-  json_object_object_add(obj, "nitrate", json_object_new_double(m->nitrate));
+    json_object_object_add(obj, "time", json_object_new_string(time_buffer));
+    json_object_object_add(obj, "temp", json_object_new_double(m->temperature));
+    json_object_object_add(obj, "ph", json_object_new_double(m->ph));
+    json_object_object_add(obj, "o2", json_object_new_double(m->o2));
+    json_object_object_add(obj, "light", json_object_new_double(m->light));
+    json_object_object_add(obj, "ammonium", json_object_new_double(m->ammonium));
+    json_object_object_add(obj, "nitrate", json_object_new_double(m->nitrate));
 
-  return obj;
+    return obj;
 }
 
 static struct json_object *serialize_measurements()
 {
-  int i;
-  struct json_object *arr = json_object_new_array();
+    int i;
+    struct json_object *arr = json_object_new_array();
 
-  for (i = 0; i < num_measurements; i++) {
-    json_object_array_add(arr, to_json(&measurement_data[i]));
-  }
-  return arr;
+    for (i = 0; i < num_measurements; i++) {
+        json_object_array_add(arr, to_json(&measurement_data[i]));
+    }
+    return arr;
 }
 
 /*************************************************************************************
@@ -274,79 +274,79 @@ static struct json_object *serialize_measurements()
 
 static struct aqx_system_entries *get_systems(const char *access_token)
 {
-  CURL *curl;
-  CURLcode result;
-  static char app_url_buffer[200];
-  struct aqx_system_entries *entries = NULL;
+    CURL *curl;
+    CURLcode result;
+    static char app_url_buffer[200];
+    struct aqx_system_entries *entries = NULL;
 
-  curl = curl_easy_init();
-  if (curl) {
-    struct curl_slist *chunk = NULL;
+    curl = curl_easy_init();
+    if (curl) {
+        struct curl_slist *chunk = NULL;
 
-    memset(json_buffer, 0, sizeof(json_buffer));
-    snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_SYSTEMS_URL);
+        memset(json_buffer, 0, sizeof(json_buffer));
+        snprintf(app_url_buffer, sizeof(app_url_buffer), AQX_SYSTEMS_URL);
 
-    /* Verification header + Content-Type */
-    sprintf(auth_header, "Authorization: Bearer %s", access_token);
-    chunk = curl_slist_append(chunk, auth_header);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+        /* Verification header + Content-Type */
+        sprintf(auth_header, "Authorization: Bearer %s", access_token);
+        chunk = curl_slist_append(chunk, auth_header);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 
-    curl_easy_setopt(curl, CURLOPT_URL, app_url_buffer);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
+        curl_easy_setopt(curl, CURLOPT_URL, app_url_buffer);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_buffer);
 
 #ifdef SKIP_PEER_VERIFICATION
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 #endif
-    result = curl_easy_perform(curl);
+        result = curl_easy_perform(curl);
 
-    if (result != CURLE_OK) {
-      LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
-      /* TODO: Handle submit error
-         maybe retry ? After that, store in a file */
-    } else {
-      json_object *obj, *system_list, *system, *s;
-      const char *uid, *name;
-      int i;
+        if (result != CURLE_OK) {
+            LOG_DEBUG("curl_easy_perform() failed: %s\n", curl_easy_strerror(result));
+            /* TODO: Handle submit error
+               maybe retry ? After that, store in a file */
+        } else {
+            json_object *obj, *system_list, *system, *s;
+            const char *uid, *name;
+            int i;
 
-      obj = json_tokener_parse(json_buffer);
-      json_count = 0;
-      if (json_object_is_type(obj, json_type_object)) {
-        if (json_object_object_get_ex(obj, "systems", &system_list)) {
-          int len = json_object_array_length(system_list), slen;
-          if (len) {
-            entries = calloc(1, sizeof(struct aqx_system_entries));
-            entries->num_entries = len;
-            entries->entries = calloc(len, sizeof(struct aqx_system_info));
+            obj = json_tokener_parse(json_buffer);
+            json_count = 0;
+            if (json_object_is_type(obj, json_type_object)) {
+                if (json_object_object_get_ex(obj, "systems", &system_list)) {
+                    int len = json_object_array_length(system_list), slen;
+                    if (len) {
+                        entries = calloc(1, sizeof(struct aqx_system_entries));
+                        entries->num_entries = len;
+                        entries->entries = calloc(len, sizeof(struct aqx_system_info));
 
-            for (i = 0; i < len; i++) {
-              system = json_object_array_get_idx(system_list, i);
-              json_object_object_get_ex(system, "uid", &s);
-              uid = json_object_get_string(s);
-              slen = strlen(uid);
-              entries->entries[i].uid = calloc(slen + 1, sizeof(char));
-              strcpy(entries->entries[i].uid, uid);
-              entries->entries[i].uid[slen] = 0;
+                        for (i = 0; i < len; i++) {
+                            system = json_object_array_get_idx(system_list, i);
+                            json_object_object_get_ex(system, "uid", &s);
+                            uid = json_object_get_string(s);
+                            slen = strlen(uid);
+                            entries->entries[i].uid = calloc(slen + 1, sizeof(char));
+                            strcpy(entries->entries[i].uid, uid);
+                            entries->entries[i].uid[slen] = 0;
 
-              json_object_object_get_ex(system, "name", &s);
-              name = json_object_get_string(s);
-              slen = strlen(name);
-              entries->entries[i].name = calloc(slen + 1, sizeof(char));
-              strcpy(entries->entries[i].name, name);
-              entries->entries[i].name[slen] = 0;
+                            json_object_object_get_ex(system, "name", &s);
+                            name = json_object_get_string(s);
+                            slen = strlen(name);
+                            entries->entries[i].name = calloc(slen + 1, sizeof(char));
+                            strcpy(entries->entries[i].name, name);
+                            entries->entries[i].name[slen] = 0;
+                        }
+                    }
+                }
             }
-          }
+            /* Free the memory */
+            json_object_put(obj);
         }
-      }
-      /* Free the memory */
-      json_object_put(obj);
-    }
 
-    curl_easy_cleanup(curl);
-    curl_slist_free_all(chunk);
-  }
-  return entries;
+        curl_easy_cleanup(curl);
+        curl_slist_free_all(chunk);
+    }
+    return entries;
 }
 
 /***************************************************************************
@@ -357,11 +357,11 @@ static struct aqx_system_entries *get_systems(const char *access_token)
 
 int aqx_client_init_api()
 {
-  num_measurements = 0;
-  /* reset timer */
-  time(&last_submission_time);
-  curl_global_init(CURL_GLOBAL_ALL);
-  return 1;
+    num_measurements = 0;
+    /* reset timer */
+    time(&last_submission_time);
+    curl_global_init(CURL_GLOBAL_ALL);
+    return 1;
 }
 
 void aqx_client_update_refresh_token(const char *token) { oauth2_refresh_token = token; }
@@ -369,7 +369,7 @@ void aqx_client_update_system(const char *uid) { system_uid = uid; }
 
 void aqx_client_cleanup()
 {
-  curl_global_cleanup();
+    curl_global_cleanup();
 }
 
 void aqx_client_flush()
@@ -383,8 +383,8 @@ void aqx_client_flush()
 
     access_token = get_access_token(oauth2_refresh_token);
     if (access_token) {
-      LOG_DEBUG("received access token: '%s'\n", access_token);
-      submit_measurements(access_token, json_str);
+        LOG_DEBUG("received access token: '%s'\n", access_token);
+        submit_measurements(access_token, json_str);
     }
 
     json_object_put(arr); /* free object */
@@ -396,26 +396,26 @@ void aqx_client_flush()
 
 int aqx_add_measurement(struct aqx_measurement *m)
 {
-  time_t currtime;
-  time_t elapsed;
+    time_t currtime;
+    time_t elapsed;
 
-  time(&currtime);
-  elapsed = currtime - last_submission_time;
-  memcpy(&measurement_data[num_measurements++], m, sizeof(struct aqx_measurement));
-  if (elapsed >= SEND_INTERVAL_SECS || num_measurements >= MAX_MEASUREMENTS) {
-    aqx_client_flush();
-  }
-  return 1;
+    time(&currtime);
+    elapsed = currtime - last_submission_time;
+    memcpy(&measurement_data[num_measurements++], m, sizeof(struct aqx_measurement));
+    if (elapsed >= SEND_INTERVAL_SECS || num_measurements >= MAX_MEASUREMENTS) {
+        aqx_client_flush();
+    }
+    return 1;
 }
 
 struct aqx_system_entries *aqx_get_systems()
 {
-  const char *access_token = get_access_token(oauth2_refresh_token);
-  if (access_token) {
-    LOG_DEBUG("received access token: '%s'\n", access_token);
-    return get_systems(access_token);
-  }
-  return NULL;
+    const char *access_token = get_access_token(oauth2_refresh_token);
+    if (access_token) {
+        LOG_DEBUG("received access token: '%s'\n", access_token);
+        return get_systems(access_token);
+    }
+    return NULL;
 }
 
 /*
@@ -423,13 +423,13 @@ struct aqx_system_entries *aqx_get_systems()
  */
 void aqx_free_systems(struct aqx_system_entries *entries)
 {
-  if (entries) {
-    int i = 0;
-    for (i = 0; i < entries->num_entries; i++) {
-      free(entries->entries[i].uid);
-      free(entries->entries[i].name);
+    if (entries) {
+        int i = 0;
+        for (i = 0; i < entries->num_entries; i++) {
+            free(entries->entries[i].uid);
+            free(entries->entries[i].name);
+        }
+        free(entries->entries);
+        free(entries);
     }
-    free(entries->entries);
-    free(entries);
-  }
 }
