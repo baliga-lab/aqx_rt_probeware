@@ -388,7 +388,7 @@ void aqx_client_flush()
     }
 
     json_object_put(arr); /* free object */
-    
+
     /* reset counter and timer */
     num_measurements = 0;
     time(&last_submission_time);

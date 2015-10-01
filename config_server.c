@@ -18,6 +18,14 @@
 #include <ctype.h>
 #include <microhttpd.h>
 
+#ifdef TARGET_OS_WIN
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <pwd.h>
+#endif
+
 #define HTDOCS_PREFIX "htdocs"
 /* Length of the opening and closing option tags <option "..."></option> */
 #define OPTION_TAG_LENGTH (17 + 9)
@@ -26,8 +34,9 @@
 #define SERVICE_PORT_PREFIX  "service_port="
 #define DEFAULT_SERVICE_PORT 8080
 
-#define INI_PATH "config.ini"
+#define MAX_INI_PATHLEN 500
 
+static char ini_path[MAX_INI_PATHLEN];
 static struct aqx_client_options client_config;
 
 struct token_post_data {
@@ -40,10 +49,22 @@ struct system_post_data {
     char system_uid[SYSTEM_UID_MAXLEN + 1];
 };
 
+static const char *get_homedir()
+{
+#ifdef TARGET_OS_WIN
+#else
+    const char *homedir;
+    if ((homedir = getenv("HOME")) == NULL) {
+        homedir = getpwuid(getuid())->pw_dir;
+    }
+    return homedir;
+#endif
+}
+
 /* Store updated configuration */
 static int save_configuration()
 {
-    FILE *fp = fopen(INI_PATH, "w");
+    FILE *fp = fopen(ini_path, "w");
     if (fp) {
         fprintf(fp, "refresh_token=%s\nsystem_uid=%s\nservice_port=%d\n",
                 client_config.oauth2_refresh_token,
@@ -178,7 +199,7 @@ static int handle_get(struct MHD_Connection *connection, const char *url)
 }
 
 /* POST method requests */
-void request_completed (void *cls, struct MHD_Connection *connection, 
+void request_completed (void *cls, struct MHD_Connection *connection,
                         void **con_cls, enum MHD_RequestTerminationCode toe)
 {
     /* this is a no-op */
@@ -186,7 +207,7 @@ void request_completed (void *cls, struct MHD_Connection *connection,
 
 static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *key,
                         const char *filename, const char *content_type,
-                        const char *transfer_encoding, const char *data, 
+                        const char *transfer_encoding, const char *data,
                         uint64_t off, size_t size)
 {
     struct token_post_data *post_data = (struct token_post_data *) coninfo_cls;
@@ -199,7 +220,7 @@ static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *
 
 static int iterate_system_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *key,
                                const char *filename, const char *content_type,
-                               const char *transfer_encoding, const char *data, 
+                               const char *transfer_encoding, const char *data,
                                uint64_t off, size_t size)
 {
     struct system_post_data *post_data = (struct system_post_data *) coninfo_cls;
@@ -258,7 +279,7 @@ static int handle_post(struct MHD_Connection *connection,
                 MHD_destroy_post_processor(post_data->pp);
                 free(post_data);
 
-                response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);      
+                response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);
                 MHD_add_response_header(response, "Location", "/");
                 ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
                 MHD_destroy_response(response);
@@ -292,19 +313,19 @@ static int handle_post(struct MHD_Connection *connection,
                 MHD_destroy_post_processor(post_data->pp);
                 free(post_data);
 
-                response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);      
+                response = MHD_create_response_from_buffer(2, "ok", MHD_RESPMEM_PERSISTENT);
                 MHD_add_response_header(response, "Location", "/");
                 ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
                 MHD_destroy_response(response);
                 return ret;
             }
         }
-    
+
     } else {
-        response = MHD_create_response_from_buffer(5, "error", MHD_RESPMEM_PERSISTENT);      
+        response = MHD_create_response_from_buffer(5, "error", MHD_RESPMEM_PERSISTENT);
         ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
         MHD_destroy_response(response);
-        return ret;    
+        return ret;
     }
 }
 
@@ -355,10 +376,18 @@ static void parse_config_line(struct aqx_client_options *cfg, char *line)
  */
 struct aqx_client_options *aqx_client_init()
 {
-    FILE *fp = fopen(INI_PATH, "r");
+    FILE *fp;
     static char line_buffer[200];
 
-    if (fp) {
+    strncpy(ini_path, get_homedir(), MAX_INI_PATHLEN);
+    strncat(ini_path, "/.vernier_client", MAX_INI_PATHLEN - strlen(ini_path));
+
+    /* makes directory if not exists */
+    mkdir(ini_path, S_IRWXU | S_IRWXG);
+
+    strncat(ini_path, "/config.ini", MAX_INI_PATHLEN - strlen(ini_path));
+
+    if ((fp = fopen(ini_path, "r"))) {
         LOG_DEBUG("configuration file opened\n");
         while (fgets(line_buffer, sizeof(line_buffer), fp)) {
             parse_config_line(&client_config, line_buffer);

@@ -407,7 +407,7 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
 	gtype_int32 status = 0;
     struct ngio_device *device;
 
-    NGIO_SearchForDevices(hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);  
+    NGIO_SearchForDevices(hNGIOlib, deviceType, NGIO_COMM_TRANSPORT_USB, NULL, &sig);
     hDeviceList = NGIO_OpenDeviceListSnapshot(hNGIOlib, deviceType, &numDevices, &sig);
     LOG_DEBUG("# devices: %d\n", numDevices);
     for (i = 0; i < numDevices; i++) {
@@ -429,7 +429,7 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
 }
 
 void NGIO_OpenAllConnectedDevices(NGIO_LIBRARY_HANDLE hNGIOlib)
-{  
+{
     LOG_DEBUG("searching for LabQuest devices\n");
     NGIO_OpenConnectedDevicesOfType(hNGIOlib, NGIO_DEVTYPE_LABQUEST);
     LOG_DEBUG("searching for LabQuest Mini devices\n");
@@ -457,7 +457,7 @@ gtype_int32 NGIO_SendIORequest(struct ngio_device *device)
         }
 #endif
     }
-  
+
     if (!status) {
         memset(&getStatusResponse, 0, sizeof(getStatusResponse));
         nRespBytes = sizeof(getStatusResponse);
@@ -467,7 +467,7 @@ gtype_int32 NGIO_SendIORequest(struct ngio_device *device)
 
     if (!status) {
         /*
-          printf("DAQ firmware version is %x.%02x .\n", (gtype_uint16) getStatusResponse.majorVersionMasterCPU, 
+          printf("DAQ firmware version is %x.%02x .\n", (gtype_uint16) getStatusResponse.majorVersionMasterCPU,
           (gtype_uint16) getStatusResponse.minorVersionMasterCPU);
         */
         memset(&getNVMemResponse, 0, sizeof(getNVMemResponse));
@@ -481,8 +481,8 @@ gtype_int32 NGIO_SendIORequest(struct ngio_device *device)
         serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.msbyteLswordSerialCounter;
         serialNum = (serialNum << 8) + getNVMemResponse.serialNumber.lsbyteLswordSerialCounter;
 #ifdef DEBUG
-        LOG_DEBUG("LabQuest serial number(yy ww nnnnnnnn) is %02x %02x %08d\n", 
-                  (gtype_uint16) getNVMemResponse.serialNumber.yy, 
+        LOG_DEBUG("LabQuest serial number(yy ww nnnnnnnn) is %02x %02x %08d\n",
+                  (gtype_uint16) getNVMemResponse.serialNumber.yy,
                   (gtype_uint16) getNVMemResponse.serialNumber.ww, serialNum);
 #endif
     }
@@ -508,7 +508,7 @@ gtype_int32 NGIO_SendIORequest(struct ngio_device *device)
                 else
                     analogInputParams.analogInput = NGIO_ANALOG_INPUT_5V_BUILTIN_12BIT_ADC;
                 analogInputParams.channel = channel;
-                NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_SET_ANALOG_INPUT, &analogInputParams, 
+                NGIO_Device_SendCmdAndGetResponse(hDevice, NGIO_CMD_ID_SET_ANALOG_INPUT, &analogInputParams,
                                                   sizeof(analogInputParams), NULL, NULL, NGIO_TIMEOUT_MS_DEFAULT);
             }
             channelMask = channelMask << 1;
@@ -568,7 +568,7 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
                 if (numMeasurements > 1) {
                     averageCalbMeasurement = averageCalbMeasurement/numMeasurements;
                 }
-        
+
                 if (IS_PH(longname)) measurement->ph = averageCalbMeasurement;
                 else if (IS_NH4(longname)) measurement->ammonium = averageCalbMeasurement;
                 else if (IS_NO3(longname)) measurement->nitrate = averageCalbMeasurement;
