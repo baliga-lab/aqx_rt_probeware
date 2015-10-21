@@ -14,8 +14,8 @@
 #define REFRESH_PARAMS "refresh_token=%s&client_id=%s&client_secret=%s&grant_type=refresh_token"
 #define GET_TOKEN_PARAMS "code=%s&client_id=%s&client_secret=%s&redirect_uri=%s&grant_type=authorization_code"
 
-#define AQX_MEASUREMENTS_URL "http://localhost:5000/api/v1/add-measurements/%s"
-#define AQX_SYSTEMS_URL      "http://localhost:5000/api/v1/systems"
+#define AQX_MEASUREMENTS_URL "http://localhost:5000/api/v1.0/measurements/%s"
+#define AQX_SYSTEMS_URL      "http://localhost:5000/api/v1.0/systems"
 
 #define AUTH_HEADER_MAXLEN 200
 #define REFRESH_POST_PARAMS_MAXLEN 1024
@@ -230,9 +230,11 @@ static json_object *to_json(struct aqx_measurement *m)
     static char time_buffer[20];
     struct json_object *obj = json_object_new_object();
     struct tm *tstruct = localtime(&m->time);
-    /* mm/dd/yyyy HH:MM:SS */
-    sprintf(time_buffer, "%02d/%02d/%04d %02d:%02d:%02d",
-            tstruct->tm_mon + 1, tstruct->tm_mday, 1900 + tstruct->tm_year,
+    /* API V1.0 date format */
+    /* yyyy/mm/dd HH:MM:SS */
+    sprintf(time_buffer, "%04d/%02d/%02d %02d:%02d:%02d",
+            1900 + tstruct->tm_year,
+            tstruct->tm_mon + 1, tstruct->tm_mday,
             tstruct->tm_hour, tstruct->tm_min, tstruct->tm_sec);
 
     json_object_object_add(obj, "time", json_object_new_string(time_buffer));
@@ -249,12 +251,13 @@ static json_object *to_json(struct aqx_measurement *m)
 static struct json_object *serialize_measurements()
 {
     int i;
-    struct json_object *arr = json_object_new_array();
+    struct json_object *arr = json_object_new_array(), *obj = json_object_new_object();
 
     for (i = 0; i < num_measurements; i++) {
         json_object_array_add(arr, to_json(&measurement_data[i]));
     }
-    return arr;
+    json_object_object_add(obj, "measurements", arr);
+    return obj;
 }
 
 /*************************************************************************************
