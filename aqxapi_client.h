@@ -8,6 +8,14 @@
 #define OAUTH2_TOKEN_MAXLEN 100
 #define SYSTEM_UID_MAXLEN 48
 
+#define API_MEASUREMENT_TIME          "time"
+#define API_MEASUREMENT_TYPE_TEMP     "temp"
+#define API_MEASUREMENT_TYPE_PH       "ph"
+#define API_MEASUREMENT_TYPE_DIO      "o2"
+#define API_MEASUREMENT_TYPE_LIGHT    "light"
+#define API_MEASUREMENT_TYPE_AMMONIUM "ammonium"
+#define API_MEASUREMENT_TYPE_NITRATE  "nitrate"
+
 /*
  * These are the measurement entities that are stored
  * and submitted.

@@ -237,13 +237,13 @@ static json_object *to_json(struct aqx_measurement *m)
             tstruct->tm_mon + 1, tstruct->tm_mday,
             tstruct->tm_hour, tstruct->tm_min, tstruct->tm_sec);
 
-    json_object_object_add(obj, "time", json_object_new_string(time_buffer));
-    json_object_object_add(obj, "temp", json_object_new_double(m->temperature));
-    json_object_object_add(obj, "ph", json_object_new_double(m->ph));
-    json_object_object_add(obj, "o2", json_object_new_double(m->o2));
-    json_object_object_add(obj, "light", json_object_new_double(m->light));
-    json_object_object_add(obj, "ammonium", json_object_new_double(m->ammonium));
-    json_object_object_add(obj, "nitrate", json_object_new_double(m->nitrate));
+    json_object_object_add(obj, API_MEASUREMENT_TIME, json_object_new_string(time_buffer));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_TEMP, json_object_new_double(m->temperature));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_PH, json_object_new_double(m->ph));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_DIO, json_object_new_double(m->o2));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_LIGHT, json_object_new_double(m->light));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_AMMONIUM, json_object_new_double(m->ammonium));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_NITRATE, json_object_new_double(m->nitrate));
 
     return obj;
 }
