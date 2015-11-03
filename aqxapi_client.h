@@ -15,19 +15,20 @@
 #define API_MEASUREMENT_TYPE_LIGHT    "light"
 #define API_MEASUREMENT_TYPE_AMMONIUM "ammonium"
 #define API_MEASUREMENT_TYPE_NITRATE  "nitrate"
+#define API_MEASUREMENT_TYPE_NITRITE  "nitrite"
 
 /*
  * These are the measurement entities that are stored
  * and submitted.
  */
 struct aqx_measurement {
-  time_t time;
-  double temperature, ph, o2, nitrate, ammonium, light;
+    time_t time;
+    double temperature, ph, o2, nitrate, ammonium, light, nitrite;
 };
 
 struct aqx_system_info {
-  char *uid;
-  char *name;
+    char *uid;
+    char *name;
 };
 
 struct aqx_system_entries {

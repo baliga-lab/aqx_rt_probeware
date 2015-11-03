@@ -225,8 +225,12 @@ int main(int argc, char* argv[])
             /* cleanup here */
             GoIO_CloseAllConnectedDevices();
             for (i = 0; i < num_ngio_devices; i++) {
-                if (ngio_devices[i].hDevice) NGIO_Device_Close(ngio_devices[i].hDevice);
+                if (ngio_devices[i].hDevice) {
+                    NGIO_Device_Close(ngio_devices[i].hDevice);
+                    ngio_devices[i].hDevice = NULL;
+                }
             }
+            num_ngio_devices = 0;
             /* Wait before taking a new round of measurements */
             OSSleep(IDLE_INTERVAL);
         }
@@ -308,8 +312,12 @@ void GoIO_CloseAllConnectedDevices()
 {
     int i;
     for (i = 0; i < num_goio_devices; i++) {
-        if (goio_devices[i].hDevice) GoIO_Sensor_Close(goio_devices[i].hDevice);
+        if (goio_devices[i].hDevice) {
+            GoIO_Sensor_Close(goio_devices[i].hDevice);
+            goio_devices[i].hDevice = NULL;
+        }
     }
+    num_goio_devices = 0;
 }
 
 /*

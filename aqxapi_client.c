@@ -227,12 +227,12 @@ static int submit_measurements(const char *access_token, const char *json_str)
 /* serialize a measurement struct into a json_object */
 static json_object *to_json(struct aqx_measurement *m)
 {
-    static char time_buffer[20];
+    static char time_buffer[22];
     struct json_object *obj = json_object_new_object();
     struct tm *tstruct = localtime(&m->time);
     /* API V1.0 date format */
-    /* yyyy/mm/dd HH:MM:SS */
-    sprintf(time_buffer, "%04d/%02d/%02d %02d:%02d:%02d",
+    /* yyyy-mm-ddTHH:MM:SSZ */
+    sprintf(time_buffer, "%04d-%02d-%02dT%02d:%02d:%02dZ",
             1900 + tstruct->tm_year,
             tstruct->tm_mon + 1, tstruct->tm_mday,
             tstruct->tm_hour, tstruct->tm_min, tstruct->tm_sec);
@@ -244,6 +244,7 @@ static json_object *to_json(struct aqx_measurement *m)
     json_object_object_add(obj, API_MEASUREMENT_TYPE_LIGHT, json_object_new_double(m->light));
     json_object_object_add(obj, API_MEASUREMENT_TYPE_AMMONIUM, json_object_new_double(m->ammonium));
     json_object_object_add(obj, API_MEASUREMENT_TYPE_NITRATE, json_object_new_double(m->nitrate));
+    json_object_object_add(obj, API_MEASUREMENT_TYPE_NITRITE, json_object_new_double(m->nitrite));
 
     return obj;
 }
