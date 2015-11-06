@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Project Feed 1010 - Vernier Client Manual</title>
+    <style>
+      body {
+      font-family: Verdana, Helvetica, sans-serif;
+      }
+      img {
+      border: 1px solid black;
+      margin: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vernier Client for Project Feed 1010 Manual</h1>
+    <h2>Installation on Windows</h2>
+   <p>
+     Unzip vernier_client.zip
+   </p>
+   <p>
+     <code>
+       cd &lt;your path&gt;\vernier_client<br>
+       vernier_client
+     </code>
+   </p>
+
+   <h4>Remark:</h4>
+    <p style="font-style: italic;">
+      Windows most likely will ask for permission access to network
+      features, please click <b>"Allow"</b>
+    </p>
+
+    <h2>Authenticating the client</h2>
+    <p>
+      a. Open your web browser at http://localhost:8080
+      <div><img src="screen1.png"></div>
+
+      On first use, the browser will require you to login to Google and
+      ask you to allow access. Please click "Allow"
+      <div><img src="screen2.png"></div>
+
+      b. Copy the toking string from the result page and 
+      copy it into the field in your vernier_client browser application.
+      Click "Submit"
+    </p>
+    <img src="screen3.png">
+
+    <h2>Selecting the system to measure</h2>
+    <img src="screen4.png">
+    <p>
+      On success, the browser will prompt you with your systems
+      that you created. Select the one that you will be measuring for
+      and hit "Submit"
+
+      Your system is now submitting the measurements to the service
+    </p>
+    <img src="screen5.png">
+
+    <h4>Note:</h4>
+    <p style="font-style: italic;">
+      Please leave the command line window open while you are measuring.
+      If you want to shut down the system, simply hit Ctrl-C to exit
+    </p>
+  </body>
+</html>
