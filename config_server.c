@@ -19,6 +19,7 @@
 #include <microhttpd.h>
 
 #ifdef TARGET_OS_WIN
+#include <direct.h>
 #else
 #include <unistd.h>
 #include <sys/types.h>
@@ -383,7 +384,11 @@ struct aqx_client_options *aqx_client_init()
     strncat(ini_path, "/.vernier_client", MAX_INI_PATHLEN - strlen(ini_path));
 
     /* makes directory if not exists */
+#ifdef TARGET_OS_WIN
+    _mkdir(ini_path);
+#else
     mkdir(ini_path, S_IRWXU | S_IRWXG);
+#endif
 
     strncat(ini_path, "/config.ini", MAX_INI_PATHLEN - strlen(ini_path));
 

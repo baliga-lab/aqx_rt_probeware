@@ -249,8 +249,7 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-void OSSleep(
-             unsigned long msToSleep)//milliseconds
+void OSSleep(unsigned long msToSleep)//milliseconds
 {
 #ifdef TARGET_OS_WIN
 	::Sleep(msToSleep);
