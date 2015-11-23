@@ -62,12 +62,13 @@ extern "C" {
 #define SENSOR_ID_TEMP   60
 #define SENSOR_ID_DO2    99
 
-#define SENSOR_NAME_PH   "PH"
-#define SENSOR_NAME_NH4  "NH4 ISE"
-#define SENSOR_NAME_NO3  "NO3 ISE"
-#define SENSOR_NAME_TEMP "Temperature"
-#define SENSOR_NAME_DO1  "D. Oxygen"
-#define SENSOR_NAME_DO2  "D. OXYGEN"
+#define SENSOR_NAME_PH    "PH"
+#define SENSOR_NAME_NH4   "NH4 ISE"
+#define SENSOR_NAME_NO3   "NO3 ISE"
+#define SENSOR_NAME_TEMP1 "Temperature"
+#define SENSOR_NAME_TEMP2 "Stainless Temp"
+#define SENSOR_NAME_DO1   "D. Oxygen"
+#define SENSOR_NAME_DO2   "D. OXYGEN"
 
 #define MAX_CONNECTED_GOIO_DEVICES 8
 #define MAX_CONNECTED_NGIO_DEVICES 4
@@ -90,7 +91,7 @@ struct goio_device goio_devices[MAX_CONNECTED_GOIO_DEVICES];
 int num_ngio_devices = 0;
 struct ngio_device ngio_devices[MAX_CONNECTED_NGIO_DEVICES];
 
-#define IS_TEMPERATURE(devname) (devname && !strncmp(SENSOR_NAME_TEMP, devname, sizeof(devname)))
+#define IS_TEMP(devname) (devname && (!strncmp(SENSOR_NAME_TEMP1, devname, sizeof(devname)) || !strncmp(SENSOR_NAME_TEMP2, devname, sizeof(devname))))
 
 #define IS_PH(devname)  (devname != NULL  && !strncmp(SENSOR_NAME_PH, devname, sizeof(devname)))
 #define IS_NH4(devname) (devname != NULL && !strncmp(SENSOR_NAME_NH4, devname, sizeof(devname)))
@@ -396,7 +397,7 @@ void GoIO_CollectMeasurements(struct aqx_measurement *measurement)
             else if (IS_NH4(goio_devices[i].description)) measurement->ammonium = value;
             else if (IS_NO3(goio_devices[i].description)) measurement->nitrate = value;
             else if (IS_DO(goio_devices[i].description)) measurement->o2 = value;
-            else if (IS_TEMPERATURE(goio_devices[i].description)) measurement->temperature = value;
+            else if (IS_TEMP(goio_devices[i].description)) measurement->temperature = value;
             else LOG_DEBUG("sensor '%s' not yet supported for GoIO\n", goio_devices[i].description);
         }
     }
@@ -429,7 +430,11 @@ void NGIO_OpenConnectedDevicesOfType(NGIO_LIBRARY_HANDLE hNGIOlib, gtype_uint32 
                 LOG_DEBUG("successfully opened NGIO device, type: %d\n", device->deviceType);
                 device->connected = 1;
                 num_ngio_devices++;
+            } else {
+                LOG_DEBUG("ERROR NGIO_Device_Open() failed - device name: %s\n", deviceName);
             }
+        } else {
+            LOG_DEBUG("ERROR GetNthEntry() failed - device name: %s\n", deviceName);
         }
     }
     NGIO_CloseDeviceListSnapshot(hDeviceList);
@@ -580,6 +585,7 @@ void NGIO_CollectMeasurements(NGIO_DEVICE_HANDLE hDevice, struct aqx_measurement
                 else if (IS_NH4(longname)) measurement->ammonium = averageCalbMeasurement;
                 else if (IS_NO3(longname)) measurement->nitrate = averageCalbMeasurement;
                 else if (IS_DO(longname)) measurement->o2 = averageCalbMeasurement;
+                else if (IS_TEMP(longname)) measurement->temperature = averageCalbMeasurement;
                 else {
                     LOG_DEBUG("Unsupported Sensor detected in ANALOG%d = %d ('%s')\n",
                               channel, sensorId, longname);
